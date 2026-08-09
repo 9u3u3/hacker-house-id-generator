@@ -65,3 +65,18 @@ for (const layer of ["sunrise", "day", "night"] as LayerName[]) {
   writeFileSync(join(out, `${layer}.png`), canvas.toBuffer("image/png"));
   console.log(`wrote ${layer}.png`);
 }
+
+/* share composition */
+import { drawShareScene, SCENE_H, SCENE_W } from "../src/lib/card/scene";
+{
+  const s = 1.5;
+  const canvas = createCanvas(SCENE_W * s, SCENE_H * s);
+  const ctx = canvas.getContext("2d");
+  drawShareScene(ctx as unknown as CanvasRenderingContext2D, SCENE_W * s, SCENE_H * s, {
+    pass,
+    fonts,
+    photo: { image: photoCanvas as unknown as CanvasImageSource, sx: 0, sy: 0, sw: 600, sh: 600 },
+  });
+  writeFileSync(join(out, "scene.png"), canvas.toBuffer("image/png"));
+  console.log("wrote scene.png");
+}

@@ -1,4 +1,5 @@
 import type { MintedPass } from "@/lib/builder";
+import { ARTIFACTS, drawArtifact } from "./artifacts";
 import { drawSigil } from "./sigil";
 import { CARD_H, CARD_RADIUS, CARD_W, THEMES, type LayerName } from "./theme";
 
@@ -17,7 +18,7 @@ export type PhotoSource = {
 /* primitives                                                          */
 /* ------------------------------------------------------------------ */
 
-function roundRect(
+export function roundRect(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
@@ -34,7 +35,7 @@ function roundRect(
  * tracked headline silently collapsing would wreck the layout. Drawing glyph by
  * glyph costs nothing at this scale and renders identically everywhere.
  */
-function tracked(
+export function tracked(
   ctx: CanvasRenderingContext2D,
   text: string,
   x: number,
@@ -59,7 +60,7 @@ function tracked(
   return total;
 }
 
-function trackedWidth(
+export function trackedWidth(
   ctx: CanvasRenderingContext2D,
   text: string,
   spacing: number,
@@ -72,7 +73,7 @@ function trackedWidth(
 }
 
 /** Shrink until it fits. Long names are the common case, not the edge case. */
-function fitFont(
+export function fitFont(
   ctx: CanvasRenderingContext2D,
   text: string,
   family: string,
@@ -90,7 +91,7 @@ function fitFont(
   return size;
 }
 
-function hairline(
+export function hairline(
   ctx: CanvasRenderingContext2D,
   x1: number,
   y: number,
@@ -113,7 +114,7 @@ function hairline(
  * the same trick banknotes use, and it reads as "official" instantly while
  * being impossible to eyeball-forge in a screenshot.
  */
-function guilloche(
+export function guilloche(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
@@ -182,7 +183,7 @@ function microtext(
 /* ------------------------------------------------------------------ */
 
 /** Low sun sitting on the horizon, banded like the site's Sun rise asset. */
-function sunDisc(
+export function sunDisc(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
@@ -210,7 +211,7 @@ function sunDisc(
 }
 
 /** Palm silhouettes along the bottom edge — the site's footer trees, redrawn. */
-function palms(
+export function palms(
   ctx: CanvasRenderingContext2D,
   baseY: number,
   color: string,
@@ -280,7 +281,7 @@ function palms(
 }
 
 /** Horizon lines that stand in for surf. */
-function waves(
+export function waves(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
@@ -321,6 +322,20 @@ const PHOTO = { x: 140, y: 150, w: 340, h: 364 };
  */
 const SCENE = { top: 118, horizon: 528 };
 
+/** Two pieces of beach clutter, one per margin, picked from the pass seed. */
+function drawArtifacts(
+  ctx: CanvasRenderingContext2D,
+  seed: number,
+  color: string,
+) {
+  const left = ARTIFACTS[seed % ARTIFACTS.length];
+  /* co-prime stride so the right side never repeats the left */
+  const right = ARTIFACTS[(seed + 3 + (seed % 7)) % ARTIFACTS.length];
+
+  drawArtifact(ctx, left, 76, SCENE.horizon, 62, color);
+  drawArtifact(ctx, right === left ? "shell" : right, 546, SCENE.horizon, 62, color);
+}
+
 function drawScenery(
   ctx: CanvasRenderingContext2D,
   layer: LayerName,
@@ -335,12 +350,14 @@ function drawScenery(
     sunDisc(ctx, CARD_W / 2, 384, 190, "rgba(255,255,255,0.50)");
     waves(ctx, 0, 468, CARD_W, "rgba(74,31,5,0.20)", 5);
     palms(ctx, SCENE.horizon, "rgba(74,31,5,0.52)", seed, 1.7);
+    drawArtifacts(ctx, seed, "rgba(74,31,5,0.74)");
   }
 
   if (layer === "day") {
     sunDisc(ctx, CARD_W / 2, 384, 190, "rgba(254,225,1,0.11)");
     waves(ctx, 0, 468, CARD_W, "rgba(255,251,232,0.16)", 5);
     palms(ctx, SCENE.horizon, "rgba(4,48,26,0.45)", seed, 1.7);
+    drawArtifacts(ctx, seed, "rgba(4,48,26,0.7)");
   }
 
   if (layer === "night") {
@@ -353,6 +370,7 @@ function drawScenery(
     ctx.restore();
     waves(ctx, 0, 468, CARD_W, "rgba(176,38,255,0.34)", 5);
     palms(ctx, SCENE.horizon, "rgba(255,0,128,0.58)", seed, 1.7);
+    drawArtifacts(ctx, seed, "rgba(255,0,128,0.8)");
   }
 
   ctx.restore();
@@ -798,8 +816,11 @@ export function drawCard(
   const { pass, photo, layer, fonts } = opts;
   const seed = [...pass.serial].reduce((a, c) => a + c.charCodeAt(0), 0);
 
+  /* Deliberately no clearRect: this also draws into the share scene, where
+     wiping the card's bounding box would punch a transparent rectangle
+     through the backdrop. Callers rendering onto a reused standalone canvas
+     clear it themselves. */
   ctx.save();
-  ctx.clearRect(0, 0, width, height);
   ctx.scale(width / CARD_W, height / CARD_H);
 
   /* everything is authored inside the rounded card silhouette */

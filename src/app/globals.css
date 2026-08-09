@@ -1,26 +1,78 @@
 @import "tailwindcss";
 
+/* ------------------------------------------------------------------
+   HH GOA 2026 — brand tokens, lifted from hhgoa.com's compiled CSS
+   ------------------------------------------------------------------ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --hh-green: #0b6839;
+  --hh-green-deep: #074a28;
+  --hh-green-ink: #04301a;
+  --hh-yellow: #fee101;
+  --hh-yellow-warm: #edd723;
+  --hh-yellow-acid: #f9dc01;
+  --hh-pink: #ff0080;
+  --hh-paper: #fffbe8;
+  --hh-white: #ffffff;
+  --hh-black: #000000;
+
+  /* time-of-day layers: the tilt axis is the sun */
+  --sunrise-sky: #ffb03a;
+  --sunrise-deep: #e0561f;
+  --sunrise-ink: #4a1f05;
+  --night-sky: #05010f;
+  --night-deep: #10032b;
+  --night-uv: #b026ff;
+
+  --background: var(--hh-green);
+  --foreground: var(--hh-paper);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+
+  --color-green: var(--hh-green);
+  --color-green-deep: var(--hh-green-deep);
+  --color-green-ink: var(--hh-green-ink);
+  --color-yellow: var(--hh-yellow);
+  --color-yellow-warm: var(--hh-yellow-warm);
+  --color-pink: var(--hh-pink);
+  --color-paper: var(--hh-paper);
+
+  --color-sunrise-sky: var(--sunrise-sky);
+  --color-sunrise-deep: var(--sunrise-deep);
+  --color-sunrise-ink: var(--sunrise-ink);
+  --color-night-sky: var(--night-sky);
+  --color-night-deep: var(--night-deep);
+  --color-night-uv: var(--night-uv);
+
+  --font-display: var(--font-imbue);
+  --font-mono: var(--font-victor-mono);
+  --font-sans: var(--font-victor-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  background: var(--hh-green-ink);
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-victor-mono), ui-monospace, monospace;
+  /* the tilt surface should never rubber-band the page on mobile */
+  overscroll-behavior-y: none;
+}
+
+/* Imbue is a display serif — it wants to be big, tight and confident. */
+.font-display {
+  font-family: var(--font-imbue), ui-serif, Georgia, serif;
+  font-weight: 700;
+  line-height: 0.86;
+  letter-spacing: -0.01em;
+}
+
+::selection {
+  background: var(--hh-yellow);
+  color: var(--hh-black);
 }

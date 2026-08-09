@@ -24,10 +24,19 @@ export const ARTIFACTS = [
 
 export type ArtifactKind = (typeof ARTIFACTS)[number];
 
-/** Knock a hole in whatever was just filled — cheap cartoon linework. */
-function cut(ctx: Ctx, path: () => void) {
+/**
+ * Cartoon linework, painted in the local background colour.
+ *
+ * This used to use `destination-out`, which does not knock a hole in the
+ * artifact — it knocks a hole in the entire canvas, taking the card background
+ * with it. On the night layer that made the day layer beneath show through as
+ * green flecks, and it would have baked transparent holes into the downloaded
+ * PNG. Painting the detail instead of erasing it keeps the damage local.
+ */
+function cut(ctx: Ctx, hole: string, path: () => void) {
   ctx.save();
-  ctx.globalCompositeOperation = "destination-out";
+  ctx.fillStyle = hole;
+  ctx.strokeStyle = hole;
   path();
   ctx.restore();
 }
@@ -42,6 +51,8 @@ function circle(ctx: Ctx, x: number, y: number, r: number) {
  * @param cx  horizontal centre
  * @param baseY  the sand line the object sits on
  * @param size  nominal height
+ * @param color  the silhouette fill
+ * @param hole  colour for interior detail — should match the local background
  */
 export function drawArtifact(
   ctx: Ctx,
@@ -50,6 +61,7 @@ export function drawArtifact(
   baseY: number,
   size: number,
   color: string,
+  hole: string,
 ) {
   const s = size / 100; /* authored against a 100px tall unit */
 
@@ -68,7 +80,7 @@ export function drawArtifact(
          shapes are the low floorboard and the tall front leg shield. */
       circle(ctx, -34, -18, 18);
       circle(ctx, 36, -18, 18);
-      cut(ctx, () => {
+      cut(ctx, hole, () => {
         circle(ctx, -34, -18, 7);
         circle(ctx, 36, -18, 7);
       });
@@ -128,7 +140,7 @@ export function drawArtifact(
       ctx.beginPath();
       ctx.arc(0, -34, 34, 0, Math.PI * 2);
       ctx.fill();
-      cut(ctx, () => {
+      cut(ctx, hole, () => {
         ctx.beginPath();
         ctx.ellipse(-2, -60, 15, 7, 0, 0, Math.PI * 2);
         ctx.fill();
@@ -159,9 +171,8 @@ export function drawArtifact(
         ctx.beginPath();
         ctx.ellipse(0, 0, 17, 30, 0, 0, Math.PI * 2);
         ctx.fill();
-        cut(ctx, () => {
+        cut(ctx, hole, () => {
           ctx.lineWidth = 5;
-          ctx.strokeStyle = "#000";
           ctx.beginPath();
           ctx.moveTo(0, -4);
           ctx.lineTo(-11, -22);
@@ -184,7 +195,7 @@ export function drawArtifact(
       ctx.quadraticCurveTo(36, -54, 0, 0);
       ctx.closePath();
       ctx.fill();
-      cut(ctx, () => {
+      cut(ctx, hole, () => {
         ctx.lineWidth = 6;
         ctx.beginPath();
         ctx.moveTo(0, -18);
@@ -224,7 +235,7 @@ export function drawArtifact(
       }
       ctx.closePath();
       ctx.fill();
-      cut(ctx, () => {
+      cut(ctx, hole, () => {
         circle(ctx, 0, -34, 7);
       });
       break;
@@ -236,7 +247,7 @@ export function drawArtifact(
       ctx.arc(0, 0, 42, Math.PI, 0);
       ctx.closePath();
       ctx.fill();
-      cut(ctx, () => {
+      cut(ctx, hole, () => {
         ctx.lineWidth = 4;
         for (let i = 1; i < 5; i++) {
           const a = Math.PI + (i / 5) * Math.PI;
@@ -268,7 +279,7 @@ export function drawArtifact(
         ctx.stroke();
         circle(ctx, dir * 50, -58, 9);
       }
-      cut(ctx, () => {
+      cut(ctx, hole, () => {
         circle(ctx, -11, -32, 5);
         circle(ctx, 11, -32, 5);
       });
@@ -280,7 +291,7 @@ export function drawArtifact(
       ctx.beginPath();
       ctx.roundRect(-44, -62, 88, 58, 7);
       ctx.fill();
-      cut(ctx, () => {
+      cut(ctx, hole, () => {
         ctx.beginPath();
         ctx.roundRect(-32, -52, 64, 24, 4);
         ctx.fill();

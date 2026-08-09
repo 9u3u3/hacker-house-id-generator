@@ -56,6 +56,29 @@ export const THEMES: Record<LayerName, LayerTheme> = {
   },
 };
 
+/** Linear blend between two #rrggbb colours. */
+export function mixHex(a: string, b: string, t: number): string {
+  const parse = (h: string) => [
+    parseInt(h.slice(1, 3), 16),
+    parseInt(h.slice(3, 5), 16),
+    parseInt(h.slice(5, 7), 16),
+  ];
+  const [r1, g1, b1] = parse(a);
+  const [r2, g2, b2] = parse(b);
+  const c = (x: number, y: number) => Math.round(x + (y - x) * t);
+  return `rgb(${c(r1, r2)}, ${c(g1, g2)}, ${c(b1, b2)})`;
+}
+
+/**
+ * Background colour at a given height down the card, used to paint interior
+ * detail into the beach artifacts so it reads as a hole without erasing the
+ * card underneath.
+ */
+export function bgAt(layer: LayerName, t: number): string {
+  const th = THEMES[layer];
+  return mixHex(th.bgTop, th.bgBottom, t);
+}
+
 /** Design-space dimensions. Everything is authored against this, then scaled. */
 export const CARD_W = 620;
 export const CARD_H = 980;

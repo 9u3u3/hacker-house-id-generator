@@ -65,8 +65,10 @@ export function drawShareScene(
   palms(ctx, SCENE_H / 1.05, "rgba(4,48,26,0.4)", seed, 1.9);
   ctx.restore();
 
-  drawArtifact(ctx, "boat", 640, 566, 76, "rgba(4,48,26,0.34)");
-  drawArtifact(ctx, "scooter", 1096, 632, 72, "rgba(4,48,26,0.42)");
+  /* hole colour tracks the scene backdrop, not the card's */
+  const sceneHole = "#0a5c37";
+  drawArtifact(ctx, "boat", 640, 566, 76, "rgba(4,48,26,0.34)", sceneHole);
+  drawArtifact(ctx, "scooter", 1096, 632, 72, "rgba(4,48,26,0.42)", sceneHole);
 
   /* ---- the card ---- */
   const cardH = 566;

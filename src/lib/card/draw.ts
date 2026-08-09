@@ -1,7 +1,7 @@
 import type { MintedPass } from "@/lib/builder";
 import { ARTIFACTS, drawArtifact } from "./artifacts";
 import { drawSigil } from "./sigil";
-import { CARD_H, CARD_RADIUS, CARD_W, THEMES, type LayerName } from "./theme";
+import { bgAt, CARD_H, CARD_RADIUS, CARD_W, THEMES, type LayerName } from "./theme";
 
 export type Fonts = { display: string; mono: string };
 
@@ -325,6 +325,7 @@ const SCENE = { top: 118, horizon: 528 };
 /** Two pieces of beach clutter, one per margin, picked from the pass seed. */
 function drawArtifacts(
   ctx: CanvasRenderingContext2D,
+  layer: LayerName,
   seed: number,
   color: string,
 ) {
@@ -332,8 +333,11 @@ function drawArtifacts(
   /* co-prime stride so the right side never repeats the left */
   const right = ARTIFACTS[(seed + 3 + (seed % 7)) % ARTIFACTS.length];
 
-  drawArtifact(ctx, left, 76, SCENE.horizon, 62, color);
-  drawArtifact(ctx, right === left ? "shell" : right, 546, SCENE.horizon, 62, color);
+  /* interior detail is painted in the background colour at the sand line */
+  const hole = bgAt(layer, SCENE.horizon / CARD_H);
+
+  drawArtifact(ctx, left, 76, SCENE.horizon, 62, color, hole);
+  drawArtifact(ctx, right === left ? "shell" : right, 546, SCENE.horizon, 62, color, hole);
 }
 
 function drawScenery(
@@ -350,14 +354,14 @@ function drawScenery(
     sunDisc(ctx, CARD_W / 2, 384, 190, "rgba(255,255,255,0.50)");
     waves(ctx, 0, 468, CARD_W, "rgba(74,31,5,0.20)", 5);
     palms(ctx, SCENE.horizon, "rgba(74,31,5,0.52)", seed, 1.7);
-    drawArtifacts(ctx, seed, "rgba(74,31,5,0.74)");
+    drawArtifacts(ctx, "sunrise", seed, "rgba(74,31,5,0.74)");
   }
 
   if (layer === "day") {
     sunDisc(ctx, CARD_W / 2, 384, 190, "rgba(254,225,1,0.11)");
     waves(ctx, 0, 468, CARD_W, "rgba(255,251,232,0.16)", 5);
     palms(ctx, SCENE.horizon, "rgba(4,48,26,0.45)", seed, 1.7);
-    drawArtifacts(ctx, seed, "rgba(4,48,26,0.7)");
+    drawArtifacts(ctx, "day", seed, "rgba(4,48,26,0.7)");
   }
 
   if (layer === "night") {
@@ -370,7 +374,7 @@ function drawScenery(
     ctx.restore();
     waves(ctx, 0, 468, CARD_W, "rgba(176,38,255,0.34)", 5);
     palms(ctx, SCENE.horizon, "rgba(255,0,128,0.58)", seed, 1.7);
-    drawArtifacts(ctx, seed, "rgba(255,0,128,0.8)");
+    drawArtifacts(ctx, "night", seed, "rgba(255,0,128,0.8)");
   }
 
   ctx.restore();

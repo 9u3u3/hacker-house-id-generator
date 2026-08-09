@@ -124,13 +124,13 @@
   z-index: 3;
   pointer-events: none;
   mix-blend-mode: color-dodge;
-  opacity: 0.5;
+  opacity: 0.24;
   transform: translateX(calc(var(--tx) * 26%)) translateY(calc(var(--ty) * 14%));
   background: linear-gradient(
     102deg,
     transparent 34%,
     rgba(255, 255, 255, 0.05) 43%,
-    rgba(255, 240, 190, 0.22) 49%,
+    rgba(255, 240, 190, 0.16) 49%,
     rgba(255, 255, 255, 0.05) 55%,
     transparent 64%
   );
@@ -142,7 +142,7 @@
   inset: 0;
   z-index: 4;
   pointer-events: none;
-  opacity: 0.16;
+  opacity: 0.1;
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='0.55'/></svg>");
   background-size: 140px 140px;

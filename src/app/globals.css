@@ -76,3 +76,27 @@ body {
   background: var(--hh-yellow);
   color: var(--hh-black);
 }
+
+/* Ticker, echoing the marquee on hhgoa.com. Two copies scroll -50% so the
+   loop is seamless regardless of viewport width. */
+.marquee {
+  display: flex;
+  width: max-content;
+  gap: 0;
+  animation: marquee 38s linear infinite;
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee {
+    animation: none;
+  }
+}

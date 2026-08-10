@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 export type TiltSource = "pointer" | "orientation" | "drag" | "manual";
 
@@ -16,6 +22,26 @@ function needsMotionPermission(): boolean {
 }
 
 const clamp = (v: number, lo = -1, hi = 1) => Math.min(hi, Math.max(lo, v));
+
+/*
+ * Environment reads go through useSyncExternalStore rather than setState in an
+ * effect. Both of these differ between server and client, and resolving them
+ * after mount would either cascade a render or hydrate the wrong control — the
+ * iOS permission button in particular would flash in for everyone.
+ */
+const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
+
+function subscribeToMedia(query: string) {
+  return (onChange: () => void) => {
+    const mq = window.matchMedia(query);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  };
+}
+
+const subscribeReducedMotion = subscribeToMedia(REDUCED_MOTION);
+/** Motion support is fixed for the life of the page; nothing to subscribe to. */
+const subscribeNever = () => () => {};
 
 /**
  * Drives the card's tilt as two normalised axes in [-1, 1].
@@ -35,8 +61,20 @@ export function useTilt(options: { maxTilt?: number } = {}) {
   const dragging = useRef(false);
 
   const [source, setSource] = useState<TiltSource>("pointer");
-  const [permissionNeeded, setPermissionNeeded] = useState(false);
-  const [reducedMotion, setReducedMotion] = useState(false);
+  const [motionGranted, setMotionGranted] = useState(false);
+
+  const reducedMotion = useSyncExternalStore(
+    subscribeReducedMotion,
+    () => window.matchMedia(REDUCED_MOTION).matches,
+    () => false,
+  );
+
+  const promptable = useSyncExternalStore(
+    subscribeNever,
+    needsMotionPermission,
+    () => false,
+  );
+  const permissionNeeded = promptable && !motionGranted;
 
   /* ---- the animation loop: ease toward target, publish as CSS vars ---- */
   useEffect(() => {
@@ -63,19 +101,6 @@ export function useTilt(options: { maxTilt?: number } = {}) {
     return () => {
       if (raf.current !== null) cancelAnimationFrame(raf.current);
     };
-  }, []);
-
-  /* ---- respect the OS motion preference ---- */
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const sync = () => setReducedMotion(mq.matches);
-    sync();
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, []);
-
-  useEffect(() => {
-    setPermissionNeeded(needsMotionPermission());
   }, []);
 
   /* ---- pointer: map cursor position against the card's centre ---- */
@@ -165,7 +190,7 @@ export function useTilt(options: { maxTilt?: number } = {}) {
     }
     detachOrientation.current?.();
     detachOrientation.current = attachOrientation();
-    setPermissionNeeded(false);
+    setMotionGranted(true);
     return true;
   }, [attachOrientation]);
 

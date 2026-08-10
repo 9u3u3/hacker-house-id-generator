@@ -23,6 +23,7 @@ export function Studio() {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [dragOver, setDragOver] = useState(false);
   const [manualTilt, setManualTilt] = useState(0);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
 
   const fileInput = useRef<HTMLInputElement | null>(null);
 
@@ -82,6 +83,54 @@ export function Studio() {
       setStatus({ kind: "error", message: "render failed — try again" });
     }
   }, [pass, photoSource]);
+
+  /**
+   * Publish, then hand X a link whose OG image is the rendered card.
+   *
+   * The web intent can't attach an image directly, so the link preview is what
+   * makes the tweet show the graphic — which is also why the pass has to be
+   * uploaded rather than kept local. The photo only leaves the device here, on
+   * an explicit share; download stays entirely offline.
+   */
+  const shareToX = useCallback(async () => {
+    setStatus({ kind: "working", message: "publishing" });
+    try {
+      const fonts = resolveFonts();
+      await ensureFontsLoaded(fonts);
+      const blob = await renderShareBlob({ pass, photo: photoSource, fonts });
+
+      const form = new FormData();
+      form.append("image", blob, "pass.png");
+      form.append(
+        "meta",
+        JSON.stringify({
+          name: pass.name,
+          stack: pass.stack,
+          handle: pass.handle,
+          builderClass: pass.builderClass,
+          serial: pass.serial,
+          seat: pass.seat,
+          salt,
+        }),
+      );
+
+      const res = await fetch("/api/publish", { method: "POST", body: form });
+      if (!res.ok) throw new Error(`publish failed: ${res.status}`);
+      const { path } = (await res.json()) as { path: string };
+
+      const url = `${window.location.origin}${path}`;
+      setShareUrl(url);
+
+      const text = `I'm a ${pass.builderClass} — seat ${pass.seat}/247 at Hacker House Goa 2026. Tilt the card, it doesn't show you the same thing twice.\n\n#FrameInGoa`;
+      const intent = `https://x.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+
+      window.open(intent, "_blank", "noopener,noreferrer");
+      setStatus({ kind: "idle" });
+    } catch (err) {
+      console.error(err);
+      setStatus({ kind: "error", message: "couldn't publish — try again" });
+    }
+  }, [pass, photoSource, salt]);
 
   const ready = name.trim().length > 0;
 
@@ -197,7 +246,25 @@ export function Studio() {
             >
               {status.kind === "working" ? "WORKING…" : "DOWNLOAD PNG"}
             </button>
+
+            <button
+              type="button"
+              onClick={() => void shareToX()}
+              disabled={!ready || status.kind === "working"}
+              className="rounded-full border border-paper/40 px-7 py-3.5 font-mono text-sm font-bold tracking-widest text-paper transition hover:border-paper hover:bg-paper hover:text-green-ink disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              SHARE TO X
+            </button>
           </div>
+
+          {shareUrl && (
+            <p className="font-mono text-xs break-all text-paper/60">
+              live link:{" "}
+              <a href={shareUrl} className="text-yellow underline">
+                {shareUrl}
+              </a>
+            </p>
+          )}
 
           {status.kind === "error" && (
             <p role="alert" className="font-mono text-sm text-pink">

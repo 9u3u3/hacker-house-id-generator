@@ -6,6 +6,8 @@ export type LoadedPhoto = {
   height: number;
   /** where the face was found, in bitmap pixels — null if we fell back */
   face: Box | null;
+  /** what the crop should centre on: face centre, or the saliency centroid */
+  focus: { x: number; y: number } | null;
 };
 
 export type Box = { x: number; y: number; w: number; h: number };
@@ -86,10 +88,82 @@ export async function detectFace(bitmap: ImageBitmap): Promise<Box | null> {
   }
 }
 
+/**
+ * Content-aware focal point, for when there's no face detector.
+ *
+ * A plain centre crop is wrong for exactly the photos the brief warns about —
+ * an off-centre subject in a landscape frame gets shoved against the edge or
+ * cut in half. This downscales to a thumbnail and scores each pixel on edge
+ * energy plus skin-likeness, then returns the centroid of that attention mass.
+ * It costs a few milliseconds and needs no model.
+ */
+function saliencyFocus(bitmap: ImageBitmap): { x: number; y: number } | null {
+  const MAX = 128;
+  const scale = Math.min(1, MAX / Math.max(bitmap.width, bitmap.height));
+  const w = Math.max(8, Math.round(bitmap.width * scale));
+  const h = Math.max(8, Math.round(bitmap.height * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return null;
+
+  ctx.drawImage(bitmap, 0, 0, w, h);
+
+  let data: Uint8ClampedArray;
+  try {
+    data = ctx.getImageData(0, 0, w, h).data;
+  } catch {
+    return null; /* tainted canvas — shouldn't happen for local files */
+  }
+
+  const luma = new Float32Array(w * h);
+  for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+    luma[p] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+  }
+
+  let sum = 0;
+  let sx = 0;
+  let sy = 0;
+
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const p = y * w + x;
+
+      /* gradient magnitude: where the detail is */
+      const gx = luma[p + 1] - luma[p - 1];
+      const gy = luma[p + w] - luma[p - w];
+      let score = Math.sqrt(gx * gx + gy * gy);
+
+      /* skin gets weighted up, since the subject is usually a person */
+      const i4 = p * 4;
+      const r = data[i4];
+      const g = data[i4 + 1];
+      const b = data[i4 + 2];
+      const mx = Math.max(r, g, b);
+      const mn = Math.min(r, g, b);
+      if (r > 95 && g > 40 && b > 20 && mx - mn > 15 && r > g && r > b && r - g > 15) {
+        score += 90;
+      }
+
+      sum += score;
+      sx += score * x;
+      sy += score * y;
+    }
+  }
+
+  if (sum <= 0) return null;
+  return { x: sx / sum / scale, y: sy / sum / scale };
+}
+
 export async function loadPhoto(file: File): Promise<LoadedPhoto> {
   const bitmap = await decodeImage(file);
   const face = await detectFace(bitmap);
-  return { bitmap, width: bitmap.width, height: bitmap.height, face };
+  const focus = face
+    ? { x: face.x + face.w / 2, y: face.y + face.h / 2 }
+    : saliencyFocus(bitmap);
+  return { bitmap, width: bitmap.width, height: bitmap.height, face, focus };
 }
 
 /**
@@ -132,6 +206,10 @@ export function computeCrop(
       cropW = Math.min(iw, cropH * targetAspect);
       cropH = cropW / targetAspect;
     }
+  } else if (photo.focus) {
+    /* content-aware centre, nudged up so there's headroom above the subject */
+    cx = photo.focus.x;
+    cy = photo.focus.y + cropH * 0.06;
   } else {
     cx = iw / 2;
     cy = ih * 0.42;

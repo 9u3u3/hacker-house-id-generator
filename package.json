@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@vercel/blob": "^2.7.0",
     "heic-to": "^1.5.2",
     "next": "16.3.0",
     "react": "19.2.8",

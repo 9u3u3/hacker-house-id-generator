@@ -196,15 +196,23 @@ export function sunDisc(
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.clip();
   ctx.fillStyle = color;
-  ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
 
-  /* knock out horizontal bands, tighter toward the bottom */
-  ctx.globalCompositeOperation = "destination-out";
+  /* solid above the band line */
+  ctx.fillRect(cx - r, cy - r, r * 2, r * 0.85);
+
+  /*
+   * Paint the bands rather than erasing the gaps between them. `destination-out`
+   * would cut straight through the card background as well as the sun, leaving
+   * genuinely transparent stripes in the exported PNG — which X renders as
+   * white bars across the card.
+   */
   let yy = cy - r * 0.15;
   let gap = bandGap * 0.5;
   while (yy < cy + r) {
-    ctx.fillRect(cx - r, yy, r * 2, gap * 0.62);
-    yy += gap;
+    const gapEnd = yy + gap * 0.62;
+    const nextStart = yy + gap;
+    ctx.fillRect(cx - r, gapEnd, r * 2, Math.max(0, nextStart - gapEnd));
+    yy = nextStart;
     gap *= 1.16;
   }
   ctx.restore();

@@ -30,6 +30,9 @@ import { CARD_H, CARD_W } from "./theme";
 export const SCENE_W = 1200;
 export const SCENE_H = 675;
 
+/** Retina factor for exported PNGs; the OG tags must declare the same. */
+export const EXPORT_SCALE = 2;
+
 const GREEN_DEEP = "#074a28";
 const PAPER = "#fffbe8";
 const YELLOW = "#fee101";
@@ -153,7 +156,7 @@ export async function renderShareBlob(opts: {
   fonts: Fonts;
   scale?: number;
 }): Promise<Blob> {
-  const scale = opts.scale ?? 2;
+  const scale = opts.scale ?? EXPORT_SCALE;
   const canvas = document.createElement("canvas");
   canvas.width = SCENE_W * scale;
   canvas.height = SCENE_H * scale;

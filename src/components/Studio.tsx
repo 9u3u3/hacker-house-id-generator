@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { MotionStatus } from "@/hooks/useTilt";
 import { mint } from "@/lib/builder";
 import { resolveFonts, ensureFontsLoaded } from "@/lib/card/fonts";
 import { renderShareBlob } from "@/lib/card/scene";
@@ -153,6 +154,7 @@ export function Studio() {
           <TiltHint
             source={tilt.source}
             permissionNeeded={tilt.permissionNeeded}
+            motionStatus={tilt.motionStatus}
             sensorBlocked={tilt.sensorBlocked}
             isTouch={tilt.isTouch}
             reducedMotion={tilt.reducedMotion}
@@ -377,6 +379,7 @@ function Dropzone(props: {
 function TiltHint(props: {
   source: string;
   permissionNeeded: boolean;
+  motionStatus: MotionStatus;
   sensorBlocked: boolean;
   isTouch: boolean;
   reducedMotion: boolean;
@@ -403,51 +406,58 @@ function TiltHint(props: {
     );
   }
 
-  if (props.permissionNeeded) {
+  /* motion is running — nothing left to offer */
+  if (props.motionStatus === "live") {
     return (
-      <button
-        type="button"
-        onClick={() => void props.onEnable()}
-        className="rounded-full border border-yellow/60 px-5 py-2.5 font-mono text-xs tracking-widest text-yellow transition hover:bg-yellow hover:text-green-ink"
-      >
-        ENABLE TILT ↗
-      </button>
+      <p className="font-mono text-[11px] tracking-[0.3em] text-yellow/80">
+        TILT YOUR PHONE ←→
+      </p>
     );
   }
 
-  if (props.source === "orientation") {
+  if (!props.isTouch) {
     return (
       <p className="font-mono text-[11px] tracking-[0.3em] text-paper/45">
-        TILT YOUR PHONE
+        MOVE TO TILT
       </p>
     );
   }
 
   /*
-   * On a touch device with no usable sensor, "move to tilt" is a lie — there's
-   * no cursor to move. Say what actually works, and explain why the sensor is
-   * missing when it's the insecure-origin case, since that's fixed by
-   * deploying rather than by anything the visitor can do.
+   * Every touch device gets the button, not just iOS. Subscribing to the sensor
+   * on load is unreliable — Chrome is far more willing to deliver readings
+   * after a user gesture, and iOS refuses the permission prompt without one.
    */
-  if (props.isTouch) {
-    return (
-      <div className="flex flex-col items-center gap-1">
-        <p className="font-mono text-[11px] tracking-[0.3em] text-paper/45">
-          DRAG THE CARD ←→
-        </p>
-        {props.sensorBlocked && (
-          <p className="max-w-[300px] text-center font-mono text-[10px] leading-relaxed text-paper/30">
-            motion tilt needs https — it&apos;ll switch on automatically once
-            this is deployed
-          </p>
-        )}
-      </div>
-    );
-  }
+  const note: Record<string, string> = {
+    blocked:
+      "your browser is blocking motion sensors — in Brave, drop Shields for this site. drag works meanwhile",
+    denied: "motion permission denied — drag the card instead",
+    insecure: "motion tilt needs https",
+    unsupported: "no motion sensor on this device — drag the card instead",
+  };
 
   return (
-    <p className="font-mono text-[11px] tracking-[0.3em] text-paper/45">
-      MOVE TO TILT
-    </p>
+    <div className="flex flex-col items-center gap-2">
+      <button
+        type="button"
+        onClick={() => void props.onEnable()}
+        disabled={props.motionStatus === "requesting"}
+        className="rounded-full border border-yellow/60 px-5 py-2.5 font-mono text-xs tracking-widest text-yellow transition hover:bg-yellow hover:text-green-ink disabled:opacity-50"
+      >
+        {props.motionStatus === "requesting"
+          ? "CHECKING SENSOR…"
+          : "ENABLE MOTION TILT ↗"}
+      </button>
+
+      <p className="font-mono text-[10px] tracking-[0.25em] text-paper/40">
+        OR DRAG THE CARD ←→
+      </p>
+
+      {note[props.motionStatus] && (
+        <p className="max-w-[300px] text-center font-mono text-[10px] leading-relaxed text-pink/80">
+          {note[props.motionStatus]}
+        </p>
+      )}
+    </div>
   );
 }

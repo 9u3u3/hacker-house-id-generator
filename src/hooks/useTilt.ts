@@ -10,6 +10,16 @@ import {
 
 export type TiltSource = "pointer" | "orientation" | "drag" | "manual";
 
+/** Why motion tilt is or isn't running, so the UI can say something true. */
+export type MotionStatus =
+  | "idle"
+  | "requesting"
+  | "live"
+  | "denied"
+  | "blocked"
+  | "insecure"
+  | "unsupported";
+
 type IosDeviceOrientation = typeof DeviceOrientationEvent & {
   requestPermission?: () => Promise<"granted" | "denied">;
 };
@@ -84,6 +94,7 @@ export function useTilt(options: { maxTilt?: number } = {}) {
 
   const [source, setSource] = useState<TiltSource>("pointer");
   const [motionGranted, setMotionGranted] = useState(false);
+  const [motionStatus, setMotionStatus] = useState<MotionStatus>("idle");
 
   const reducedMotion = useSyncExternalStore(
     subscribeReducedMotion,
@@ -189,58 +200,117 @@ export function useTilt(options: { maxTilt?: number } = {}) {
   };
 
   /* ---- device orientation ---- */
-  const attachOrientation = useCallback(() => {
-    const onOrient = (e: DeviceOrientationEvent) => {
-      if (e.gamma === null || e.beta === null) return;
-      /* gamma is left/right roll in degrees; ±26° is a comfortable wrist range
-         and reaches full deflection without anyone having to flip the phone */
-      target.current = {
-        x: clamp(e.gamma / 26) * maxTilt,
-        y: clamp((e.beta - 45) / 34) * maxTilt,
-      };
-    };
-    window.addEventListener("deviceorientation", onOrient);
-    setSource("orientation");
-    return () => window.removeEventListener("deviceorientation", onOrient);
-  }, [maxTilt]);
 
   const detachOrientation = useRef<(() => void) | null>(null);
+  /** first reading, used as the neutral point */
+  const baseline = useRef<{ beta: number; gamma: number } | null>(null);
 
-  const enableOrientation = useCallback(async () => {
+  /**
+   * Attach the sensor and report whether readings actually arrive.
+   *
+   * Subscribing is not the same as receiving. Brave blocks motion sensors as a
+   * fingerprinting vector and Chrome will happily accept the listener while
+   * delivering nothing, so the only way to know the sensor works is to wait for
+   * a reading and time out if none comes.
+   */
+  const attachOrientation = useCallback(async (): Promise<boolean> => {
+    detachOrientation.current?.();
+    baseline.current = null;
+
+    let live = false;
+
+    const onOrient = (e: DeviceOrientationEvent) => {
+      if (e.beta === null || e.gamma === null) return;
+
+      /*
+       * Calibrate to however the phone happens to be held. Absolute beta is
+       * ~75-90 degrees for someone reading at a natural angle, so treating 0 as
+       * neutral pinned the card at full deflection before anyone moved it.
+       */
+      if (!baseline.current) {
+        baseline.current = { beta: e.beta, gamma: e.gamma };
+        live = true;
+        setSource("orientation");
+        setMotionStatus("live");
+      }
+
+      const base = baseline.current;
+      target.current = {
+        /* +-22 degrees of roll reaches full deflection — a wrist movement */
+        x: clamp((e.gamma - base.gamma) / 22) * maxTilt,
+        y: clamp((e.beta - base.beta) / 26) * maxTilt,
+      };
+    };
+
+    window.addEventListener("deviceorientation", onOrient);
+    detachOrientation.current = () => {
+      window.removeEventListener("deviceorientation", onOrient);
+      baseline.current = null;
+    };
+
+    await new Promise((resolve) => setTimeout(resolve, 1400));
+
+    if (!live) {
+      detachOrientation.current?.();
+      detachOrientation.current = null;
+      return false;
+    }
+    return true;
+  }, [maxTilt]);
+
+  /**
+   * Turn on motion tilt. Must be called from a tap: iOS requires a gesture for
+   * the permission prompt, and other browsers are more willing to start
+   * delivering sensor data after user activation.
+   */
+  const enableOrientation = useCallback(async (): Promise<boolean> => {
+    if (!isSecure()) {
+      setMotionStatus("insecure");
+      return false;
+    }
+
     const D = window.DeviceOrientationEvent as IosDeviceOrientation | undefined;
-    if (!D) return false;
+    if (!D) {
+      setMotionStatus("unsupported");
+      return false;
+    }
+
+    setMotionStatus("requesting");
 
     if (typeof D.requestPermission === "function") {
       try {
         const res = await D.requestPermission();
-        if (res !== "granted") return false;
+        if (res !== "granted") {
+          setMotionStatus("denied");
+          return false;
+        }
       } catch {
+        setMotionStatus("denied");
         return false;
       }
     }
-    detachOrientation.current?.();
-    detachOrientation.current = attachOrientation();
     setMotionGranted(true);
-    return true;
+
+    const ok = await attachOrientation();
+    if (!ok) setMotionStatus("blocked");
+    return ok;
   }, [attachOrientation]);
 
-  /* Non-iOS touch devices expose the sensor with no prompt, so just take it. */
+  /*
+   * Browsers that hand over the sensor unprompted get it without a tap. This is
+   * best-effort only — if nothing arrives the button is still there, and iOS is
+   * skipped entirely because it would burn the one gesture-free attempt.
+   */
   useEffect(() => {
-    if (needsMotionPermission() || reducedMotion) return;
-    if (orientationUnavailable()) return;
-    if (!coarsePointer()) return;
+    if (reducedMotion || needsMotionPermission()) return;
+    if (orientationUnavailable() || !coarsePointer()) return;
 
     let cancelled = false;
-    const probe = (e: DeviceOrientationEvent) => {
-      if (cancelled || e.gamma === null) return;
-      window.removeEventListener("deviceorientation", probe);
-      detachOrientation.current?.();
-      detachOrientation.current = attachOrientation();
-    };
-    window.addEventListener("deviceorientation", probe);
+    void attachOrientation().then((ok) => {
+      if (!ok && !cancelled) setMotionStatus("idle");
+    });
     return () => {
       cancelled = true;
-      window.removeEventListener("deviceorientation", probe);
     };
   }, [attachOrientation, reducedMotion]);
 
@@ -257,6 +327,7 @@ export function useTilt(options: { maxTilt?: number } = {}) {
     ref,
     source,
     permissionNeeded,
+    motionStatus,
     sensorBlocked,
     isTouch,
     reducedMotion,

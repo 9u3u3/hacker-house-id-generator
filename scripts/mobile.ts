@@ -122,6 +122,52 @@ for (const profile of ["Pixel 7", "iPhone 13"] as const) {
     check("drag reveals the night layer", Number(tx) > 0.3, `--reveal-right=${tx}`);
   }
 
+  /* 5. motion tilt: tap to enable, then feed synthetic sensor readings */
+  const motion = await page.evaluate(async () => {
+    const btn = Array.from(document.querySelectorAll("button")).find((b) =>
+      /ENABLE MOTION TILT/i.test(b.textContent ?? ""),
+    );
+    if (!btn) return { error: "no enable button" };
+
+    btn.click();
+
+    /* the hook waits ~1.4s for a reading before declaring the sensor blocked;
+       hold the phone at a natural angle first, then roll it right */
+    const fire = (beta: number, gamma: number) =>
+      window.dispatchEvent(
+        new DeviceOrientationEvent("deviceorientation", { beta, gamma }),
+      );
+
+    await new Promise((r) => setTimeout(r, 120));
+    fire(78, 4); /* baseline: however it happens to be held */
+    await new Promise((r) => setTimeout(r, 200));
+    for (let i = 0; i < 12; i++) {
+      fire(78, 4 + i * 2.2);
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    await new Promise((r) => setTimeout(r, 1600));
+
+    const el = document.querySelector('[class*="tilt"]') as HTMLElement | null;
+    const label = document.body.innerText;
+    return {
+      revealRight: el?.style.getPropertyValue("--reveal-right") ?? "",
+      saysTilt: /TILT YOUR PHONE/i.test(label),
+      saysBlocked: /blocking motion sensors/i.test(label),
+    };
+  });
+
+  if ("error" in motion) {
+    check("motion enable button present", false, motion.error);
+  } else {
+    check("motion tilt goes live on synthetic readings", motion.saysTilt === true);
+    check(
+      "baseline calibration: neutral hold is not full deflection",
+      Number(motion.revealRight) > 0.4 && Number(motion.revealRight) <= 1,
+      `--reveal-right=${motion.revealRight}`,
+    );
+    check("no false 'blocked' message", motion.saysBlocked === false);
+  }
+
   check("no page errors", errors.length === 0, errors.slice(0, 2).join(" | "));
 
   await page.screenshot({

@@ -1,7 +1,7 @@
 import type { PhotoSource } from "./card/draw";
 
 export type LoadedPhoto = {
-  bitmap: ImageBitmap;
+  source: CanvasImageSource;
   width: number;
   height: number;
   /** where the face was found, in bitmap pixels — null if we fell back */
@@ -20,33 +20,87 @@ function looksLikeHeic(file: File): boolean {
   return /\.hei[cf]$/i.test(file.name);
 }
 
+/** Anything canvas can draw. Not every browser gives us an ImageBitmap. */
+export type Decoded = {
+  source: CanvasImageSource;
+  width: number;
+  height: number;
+};
+
+/** Last-resort decode: an <img> element off an object URL. */
+async function decodeViaImgElement(blob: Blob): Promise<Decoded> {
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = new Image();
+    img.decoding = "async";
+    /* browsers apply EXIF orientation to <img> by default, which is what we
+       want and matches the imageOrientation:"from-image" path above */
+    img.src = url;
+
+    await (img.decode
+      ? img.decode()
+      : new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error("image failed to load"));
+        }));
+
+    if (!img.naturalWidth) throw new Error("image decoded with zero width");
+    return { source: img, width: img.naturalWidth, height: img.naturalHeight };
+  } finally {
+    /* the element keeps its own reference to the decoded data */
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+}
+
 /**
- * Decode any of the formats a phone camera roll might hand us into an
- * ImageBitmap with EXIF rotation already applied.
+ * Decode whatever the camera roll hands us into something canvas can draw,
+ * with EXIF rotation already applied.
  *
- * `imageOrientation: "from-image"` is what stops portrait iPhone shots from
- * arriving sideways — without it every photo taken in portrait lands rotated.
+ * Every step here is a fallback for a browser that lacks the one before it.
+ * `createImageBitmap` doesn't exist everywhere, and where it does the options
+ * argument is a later addition — passing it to an older implementation throws,
+ * which previously surfaced as "couldn't read that image" for a perfectly
+ * valid JPEG. Orientation matters because without it portrait phone shots
+ * arrive sideways.
  */
-export async function decodeImage(file: File): Promise<ImageBitmap> {
-  if (looksLikeHeic(file)) {
-    /* Safari decodes HEIC natively; everything else needs the wasm path, and
-       it's ~1.5MB so it only loads when a HEIC actually shows up. */
+async function decodeBlob(blob: Blob): Promise<Decoded> {
+  if (typeof createImageBitmap === "function") {
     try {
-      return await createImageBitmap(file, { imageOrientation: "from-image" });
-    } catch {
-      const { heicTo } = await import("heic-to");
-      const converted = await heicTo({
-        blob: file,
-        type: "image/jpeg",
-        quality: 0.92,
-      });
-      return await createImageBitmap(converted, {
+      const bmp = await createImageBitmap(blob, {
         imageOrientation: "from-image",
       });
+      return { source: bmp, width: bmp.width, height: bmp.height };
+    } catch {
+      /* options unsupported, or the codec is refused — keep going */
+    }
+
+    try {
+      const bmp = await createImageBitmap(blob);
+      return { source: bmp, width: bmp.width, height: bmp.height };
+    } catch {
+      /* fall through to the element path */
     }
   }
 
-  return await createImageBitmap(file, { imageOrientation: "from-image" });
+  return await decodeViaImgElement(blob);
+}
+
+export async function decodeImage(file: File): Promise<Decoded> {
+  try {
+    return await decodeBlob(file);
+  } catch (err) {
+    /* HEIC is the usual reason a native decode fails off an iPhone. The wasm
+       decoder is ~1.5MB, so it only loads once we actually need it. */
+    if (!looksLikeHeic(file)) throw err;
+
+    const { heicTo } = await import("heic-to");
+    const converted = await heicTo({
+      blob: file,
+      type: "image/jpeg",
+      quality: 0.92,
+    });
+    return await decodeBlob(converted);
+  }
 }
 
 type NativeFaceDetector = {
@@ -61,7 +115,7 @@ type NativeFaceDetector = {
  * flow on, so a miss just returns null and the crop falls back to the
  * portrait heuristic.
  */
-export async function detectFace(bitmap: ImageBitmap): Promise<Box | null> {
+export async function detectFace(image: Decoded): Promise<Box | null> {
   const Ctor = (
     window as unknown as {
       FaceDetector?: new (opts?: { fastMode?: boolean; maxDetectedFaces?: number }) => NativeFaceDetector;
@@ -71,7 +125,7 @@ export async function detectFace(bitmap: ImageBitmap): Promise<Box | null> {
 
   try {
     const detector = new Ctor({ fastMode: true, maxDetectedFaces: 8 });
-    const faces = await detector.detect(bitmap);
+    const faces = await detector.detect(image.source as ImageBitmapSource);
     if (!faces.length) return null;
 
     /* biggest face wins — in a group shot that's whoever is closest */
@@ -97,11 +151,11 @@ export async function detectFace(bitmap: ImageBitmap): Promise<Box | null> {
  * energy plus skin-likeness, then returns the centroid of that attention mass.
  * It costs a few milliseconds and needs no model.
  */
-function saliencyFocus(bitmap: ImageBitmap): { x: number; y: number } | null {
+function saliencyFocus(image: Decoded): { x: number; y: number } | null {
   const MAX = 128;
-  const scale = Math.min(1, MAX / Math.max(bitmap.width, bitmap.height));
-  const w = Math.max(8, Math.round(bitmap.width * scale));
-  const h = Math.max(8, Math.round(bitmap.height * scale));
+  const scale = Math.min(1, MAX / Math.max(image.width, image.height));
+  const w = Math.max(8, Math.round(image.width * scale));
+  const h = Math.max(8, Math.round(image.height * scale));
 
   const canvas = document.createElement("canvas");
   canvas.width = w;
@@ -109,7 +163,7 @@ function saliencyFocus(bitmap: ImageBitmap): { x: number; y: number } | null {
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) return null;
 
-  ctx.drawImage(bitmap, 0, 0, w, h);
+  ctx.drawImage(image.source, 0, 0, w, h);
 
   let data: Uint8ClampedArray;
   try {
@@ -158,12 +212,18 @@ function saliencyFocus(bitmap: ImageBitmap): { x: number; y: number } | null {
 }
 
 export async function loadPhoto(file: File): Promise<LoadedPhoto> {
-  const bitmap = await decodeImage(file);
-  const face = await detectFace(bitmap);
+  const decoded = await decodeImage(file);
+  const face = await detectFace(decoded);
   const focus = face
     ? { x: face.x + face.w / 2, y: face.y + face.h / 2 }
-    : saliencyFocus(bitmap);
-  return { bitmap, width: bitmap.width, height: bitmap.height, face, focus };
+    : saliencyFocus(decoded);
+  return {
+    source: decoded.source,
+    width: decoded.width,
+    height: decoded.height,
+    face,
+    focus,
+  };
 }
 
 /**
@@ -222,5 +282,5 @@ export function computeCrop(
   const sx = Math.max(0, Math.min(iw - cropW, cx - cropW / 2));
   const sy = Math.max(0, Math.min(ih - cropH, cy - cropH / 2));
 
-  return { image: photo.bitmap, sx, sy, sw: cropW, sh: cropH };
+  return { image: photo.source, sx, sy, sw: cropW, sh: cropH };
 }

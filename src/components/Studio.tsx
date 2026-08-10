@@ -159,6 +159,7 @@ export function Studio() {
             isTouch={tilt.isTouch}
             reducedMotion={tilt.reducedMotion}
             onEnable={tilt.enableOrientation}
+            onPlay={tilt.playSweep}
             manual={manualTilt}
             onManual={(v) => {
               setManualTilt(v);
@@ -384,6 +385,7 @@ function TiltHint(props: {
   isTouch: boolean;
   reducedMotion: boolean;
   onEnable: () => Promise<boolean>;
+  onPlay: () => void;
   manual: number;
   onManual: (v: number) => void;
 }) {
@@ -409,17 +411,23 @@ function TiltHint(props: {
   /* motion is running — nothing left to offer */
   if (props.motionStatus === "live") {
     return (
-      <p className="font-mono text-[11px] tracking-[0.3em] text-yellow/80">
-        TILT YOUR PHONE ←→
-      </p>
+      <div className="flex flex-col items-center gap-2">
+        <p className="font-mono text-[11px] tracking-[0.3em] text-yellow/80">
+          TILT YOUR PHONE ←→
+        </p>
+        <PlayReveal onPlay={props.onPlay} />
+      </div>
     );
   }
 
   if (!props.isTouch) {
     return (
-      <p className="font-mono text-[11px] tracking-[0.3em] text-paper/45">
-        MOVE TO TILT
-      </p>
+      <div className="flex flex-col items-center gap-2">
+        <p className="font-mono text-[11px] tracking-[0.3em] text-paper/45">
+          MOVE TO TILT
+        </p>
+        <PlayReveal onPlay={props.onPlay} />
+      </div>
     );
   }
 
@@ -449,6 +457,8 @@ function TiltHint(props: {
           : "ENABLE MOTION TILT ↗"}
       </button>
 
+      <PlayReveal onPlay={props.onPlay} />
+
       <p className="font-mono text-[10px] tracking-[0.25em] text-paper/40">
         OR DRAG THE CARD ←→
       </p>
@@ -459,5 +469,18 @@ function TiltHint(props: {
         </p>
       )}
     </div>
+  );
+}
+
+/** Hands-free playback of the reveal, for when tilt isn't available. */
+function PlayReveal({ onPlay }: { onPlay: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onPlay}
+      className="rounded-full bg-pink/90 px-5 py-2.5 font-mono text-xs font-bold tracking-widest text-paper transition hover:brightness-110"
+    >
+      ▶ PLAY THE REVEAL
+    </button>
   );
 }

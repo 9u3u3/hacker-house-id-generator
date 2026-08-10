@@ -91,6 +91,9 @@ export function useTilt(options: { maxTilt?: number } = {}) {
   const current = useRef({ x: 0, y: 0 });
   const raf = useRef<number | null>(null);
   const dragging = useRef(false);
+  /* an auto-sweep owns the tilt while it runs, so other inputs stand down */
+  const sweeping = useRef(false);
+  const sweepRaf = useRef<number | null>(null);
 
   const [source, setSource] = useState<TiltSource>("pointer");
   const [motionGranted, setMotionGranted] = useState(false);
@@ -149,7 +152,7 @@ export function useTilt(options: { maxTilt?: number } = {}) {
     if (reducedMotion || source === "orientation" || source === "manual") return;
 
     const onMove = (e: PointerEvent) => {
-      if (dragging.current) return;
+      if (dragging.current || sweeping.current) return;
       const el = ref.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
@@ -177,7 +180,7 @@ export function useTilt(options: { maxTilt?: number } = {}) {
   /* ---- drag: the fallback when there's no cursor and no sensor ---- */
   const dragHandlers = {
     onPointerDown: (e: React.PointerEvent) => {
-      if (source === "orientation") return;
+      if (source === "orientation" || sweeping.current) return;
       dragging.current = true;
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
       setSource("drag");
@@ -316,6 +319,45 @@ export function useTilt(options: { maxTilt?: number } = {}) {
 
   useEffect(() => () => detachOrientation.current?.(), []);
 
+  /**
+   * Play the whole reveal hands-free: flat, into sunrise, back through flat,
+   * into night, and home again.
+   *
+   * The hidden layers are the entire point of the card, and they can be
+   * unreachable through no fault of the visitor — Brave blocks motion sensors
+   * by default, and a desktop visitor with no mouse movement never discovers
+   * them either. This guarantees everyone can see what the card does.
+   */
+  const playSweep = useCallback(() => {
+    if (sweepRaf.current !== null) cancelAnimationFrame(sweepRaf.current);
+
+    sweeping.current = true;
+    const started = performance.now();
+    const DURATION = 4600;
+
+    const step = (now: number) => {
+      const t = (now - started) / DURATION;
+      if (t >= 1) {
+        target.current = { x: 0, y: 0 };
+        sweeping.current = false;
+        sweepRaf.current = null;
+        return;
+      }
+      /* -sin(2*pi*t): 0 -> -1 (sunrise) -> 0 -> +1 (night) -> 0 */
+      target.current = { x: -Math.sin(t * Math.PI * 2), y: 0 };
+      sweepRaf.current = requestAnimationFrame(step);
+    };
+
+    sweepRaf.current = requestAnimationFrame(step);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (sweepRaf.current !== null) cancelAnimationFrame(sweepRaf.current);
+    },
+    [],
+  );
+
   /** Reduced-motion escape hatch: the secret must stay reachable by hand. */
   const setManual = useCallback((x: number) => {
     target.current = { x: clamp(x), y: 0 };
@@ -332,6 +374,7 @@ export function useTilt(options: { maxTilt?: number } = {}) {
     isTouch,
     reducedMotion,
     enableOrientation,
+    playSweep,
     setManual,
     enterManual,
     dragHandlers,

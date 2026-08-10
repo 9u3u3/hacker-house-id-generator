@@ -168,6 +168,47 @@ for (const profile of ["Pixel 7", "iPhone 13"] as const) {
     check("no false 'blocked' message", motion.saysBlocked === false);
   }
 
+  /* 6. the sweep must reach both hidden layers without any sensor */
+  const sweep = await page.evaluate(async () => {
+    const btn = Array.from(document.querySelectorAll("button")).find((b) =>
+      /PLAY THE REVEAL/i.test(b.textContent ?? ""),
+    );
+    if (!btn) return { error: "no play button" };
+
+    const el = document.querySelector('[class*="tilt"]') as HTMLElement | null;
+    btn.click();
+
+    let maxLeft = 0;
+    let maxRight = 0;
+    for (let i = 0; i < 60; i++) {
+      await new Promise((r) => setTimeout(r, 90));
+      maxLeft = Math.max(maxLeft, Number(el?.style.getPropertyValue("--reveal-left") || 0));
+      maxRight = Math.max(maxRight, Number(el?.style.getPropertyValue("--reveal-right") || 0));
+    }
+    const rest = Number(el?.style.getPropertyValue("--tx") || 0);
+    return { maxLeft, maxRight, rest };
+  });
+
+  if ("error" in sweep) {
+    check("play-the-reveal button present", false, sweep.error);
+  } else {
+    check(
+      "sweep reaches the sunrise layer",
+      sweep.maxLeft > 0.8,
+      `peak --reveal-left=${sweep.maxLeft.toFixed(2)}`,
+    );
+    check(
+      "sweep reaches the night layer",
+      sweep.maxRight > 0.8,
+      `peak --reveal-right=${sweep.maxRight.toFixed(2)}`,
+    );
+    check(
+      "sweep settles back to flat",
+      Math.abs(sweep.rest) < 0.1,
+      `--tx=${sweep.rest.toFixed(3)}`,
+    );
+  }
+
   check("no page errors", errors.length === 0, errors.slice(0, 2).join(" | "));
 
   await page.screenshot({

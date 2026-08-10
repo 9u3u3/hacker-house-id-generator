@@ -29,6 +29,10 @@ page.on("console", (m) => {
 
 await page.goto(URL_, { waitUntil: "networkidle" });
 
+/* optional photo, so the tilt captures show a real portrait */
+const PHOTO = process.argv[2];
+if (PHOTO) await page.setInputFiles('input[type="file"]', PHOTO);
+
 await page.getByPlaceholder("your name").fill("Harsh Gaonkar");
 await page.getByPlaceholder("@you").fill("@harshg");
 await page.getByPlaceholder("typescript · rust · webgl").fill("TypeScript · Rust · WebGL");
@@ -81,6 +85,7 @@ const mobile = await browser.newPage({
   hasTouch: true,
 });
 await mobile.goto(URL_, { waitUntil: "networkidle" });
+if (PHOTO) await mobile.setInputFiles('input[type="file"]', PHOTO);
 await mobile.getByPlaceholder("your name").fill("Harsh Gaonkar");
 await mobile.waitForTimeout(1000);
 await mobile.screenshot({ path: `${OUT}/mobile.png`, fullPage: true });

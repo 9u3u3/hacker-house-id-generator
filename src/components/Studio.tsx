@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { mint } from "@/lib/builder";
 import { resolveFonts, ensureFontsLoaded } from "@/lib/card/fonts";
 import { renderShareBlob } from "@/lib/card/scene";
 import { CARD_H, CARD_W } from "@/lib/card/theme";
 import { computeCrop, loadPhoto, type LoadedPhoto } from "@/lib/photo";
 import { useTilt } from "@/hooks/useTilt";
+import { Diagnostics } from "./Diagnostics";
 import { TidePass } from "./TidePass";
 
 const CARD_ASPECT = CARD_W / CARD_H;
@@ -24,8 +25,6 @@ export function Studio() {
   const [dragOver, setDragOver] = useState(false);
   const [manualTilt, setManualTilt] = useState(0);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
-
-  const fileInput = useRef<HTMLInputElement | null>(null);
 
   const tilt = useTilt();
 
@@ -146,11 +145,16 @@ export function Studio() {
             photo={photoSource}
             tiltRef={tilt.ref as React.Ref<HTMLDivElement>}
             dragHandlers={tilt.dragHandlers}
+            onDrawError={(message) =>
+              setStatus({ kind: "error", message: `card render: ${message}` })
+            }
           />
 
           <TiltHint
             source={tilt.source}
             permissionNeeded={tilt.permissionNeeded}
+            sensorBlocked={tilt.sensorBlocked}
+            isTouch={tilt.isTouch}
             reducedMotion={tilt.reducedMotion}
             onEnable={tilt.enableOrientation}
             manual={manualTilt}
@@ -182,16 +186,8 @@ export function Studio() {
           <Dropzone
             hasPhoto={!!photo}
             dragOver={dragOver}
-            onPick={() => fileInput.current?.click()}
             onDragState={setDragOver}
             onFile={handleFile}
-          />
-          <input
-            ref={fileInput}
-            type="file"
-            accept="image/*,.heic,.heif"
-            className="sr-only"
-            onChange={(e) => void handleFile(e.target.files?.[0])}
           />
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -279,6 +275,8 @@ export function Studio() {
           )}
         </section>
       </main>
+
+      <Diagnostics />
     </div>
   );
 }
@@ -320,17 +318,25 @@ function Field(props: {
   );
 }
 
+/**
+ * A real <label> wrapping a real <input type="file">.
+ *
+ * This was a <button> that called input.click() on a visually-hidden input.
+ * Android browsers are unreliable about opening the picker for a synthetic
+ * click on a clipped input — a label's native activation always works.
+ *
+ * `accept` is plain "image/*" too: Android's picker mishandles a list that
+ * mixes MIME types with file extensions, and iOS already offers HEIC under
+ * image/*, so listing .heic/.heif bought nothing and broke the picker.
+ */
 function Dropzone(props: {
   hasPhoto: boolean;
   dragOver: boolean;
-  onPick: () => void;
   onDragState: (v: boolean) => void;
   onFile: (f: File | undefined) => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={props.onPick}
+    <label
       onDragOver={(e) => {
         e.preventDefault();
         props.onDragState(true);
@@ -341,12 +347,22 @@ function Dropzone(props: {
         props.onDragState(false);
         props.onFile(e.dataTransfer.files?.[0]);
       }}
-      className={`w-full rounded-xl border-2 border-dashed px-5 py-7 text-left transition ${
+      className={`block w-full cursor-pointer rounded-xl border-2 border-dashed px-5 py-7 text-left transition ${
         props.dragOver
           ? "border-yellow bg-yellow/10"
           : "border-paper/25 hover:border-paper/50"
       }`}
     >
+      <input
+        type="file"
+        accept="image/*"
+        className="sr-only"
+        onChange={(e) => {
+          props.onFile(e.target.files?.[0]);
+          /* let the same file be picked twice in a row */
+          e.target.value = "";
+        }}
+      />
       <p className="font-mono text-sm font-bold tracking-widest text-yellow">
         {props.hasPhoto ? "SWAP PHOTO" : "DROP A PHOTO"}
       </p>
@@ -354,13 +370,15 @@ function Dropzone(props: {
         jpg · png · heic from your iPhone. We&apos;ll centre it for you — no
         cropping needed.
       </p>
-    </button>
+    </label>
   );
 }
 
 function TiltHint(props: {
   source: string;
   permissionNeeded: boolean;
+  sensorBlocked: boolean;
+  isTouch: boolean;
   reducedMotion: boolean;
   onEnable: () => Promise<boolean>;
   manual: number;
@@ -397,9 +415,39 @@ function TiltHint(props: {
     );
   }
 
+  if (props.source === "orientation") {
+    return (
+      <p className="font-mono text-[11px] tracking-[0.3em] text-paper/45">
+        TILT YOUR PHONE
+      </p>
+    );
+  }
+
+  /*
+   * On a touch device with no usable sensor, "move to tilt" is a lie — there's
+   * no cursor to move. Say what actually works, and explain why the sensor is
+   * missing when it's the insecure-origin case, since that's fixed by
+   * deploying rather than by anything the visitor can do.
+   */
+  if (props.isTouch) {
+    return (
+      <div className="flex flex-col items-center gap-1">
+        <p className="font-mono text-[11px] tracking-[0.3em] text-paper/45">
+          DRAG THE CARD ←→
+        </p>
+        {props.sensorBlocked && (
+          <p className="max-w-[300px] text-center font-mono text-[10px] leading-relaxed text-paper/30">
+            motion tilt needs https — it&apos;ll switch on automatically once
+            this is deployed
+          </p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <p className="font-mono text-[11px] tracking-[0.3em] text-paper/45">
-      {props.source === "orientation" ? "TILT YOUR PHONE" : "MOVE TO TILT"}
+      MOVE TO TILT
     </p>
   );
 }

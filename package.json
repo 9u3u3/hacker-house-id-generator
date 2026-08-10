@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "dev:https": "next dev --experimental-https",
+    "check:mobile": "bun run scripts/mobile.ts"
   },
   "dependencies": {
     "@vercel/blob": "^2.7.0",

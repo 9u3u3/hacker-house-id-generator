@@ -32,8 +32,18 @@ export async function ensureFontsLoaded(fonts: Fonts): Promise<void> {
     `400 6px ${fonts.mono}`,
   ];
 
-  await Promise.all(
-    specs.map((s) => document.fonts.load(s).catch(() => undefined)),
+  /*
+   * Hard timeout. `document.fonts.ready` is supposed to settle once loading
+   * finishes, but a browser that never resolves it would otherwise block every
+   * caller forever — and the callers here gate rendering and export on it.
+   * Falling back to system faces beats hanging.
+   */
+  const withTimeout = <T,>(p: Promise<T>, ms: number) =>
+    Promise.race([p, new Promise<void>((resolve) => setTimeout(resolve, ms))]);
+
+  await withTimeout(
+    Promise.all(specs.map((s) => document.fonts.load(s).catch(() => undefined))),
+    3000,
   );
-  await document.fonts.ready;
+  await withTimeout(document.fonts.ready, 1000);
 }

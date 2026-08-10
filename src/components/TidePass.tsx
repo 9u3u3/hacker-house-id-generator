@@ -1,16 +1,24 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { MintedPass } from "@/lib/builder";
-import { drawCard, type PhotoSource } from "@/lib/card/draw";
+import { drawCard, type Fonts, type PhotoSource } from "@/lib/card/draw";
 import { ensureFontsLoaded, resolveFonts } from "@/lib/card/fonts";
 import { CARD_H, CARD_W, type LayerName } from "@/lib/card/theme";
 import styles from "./TidePass.module.css";
 
 const LAYERS: LayerName[] = ["day", "sunrise", "night"];
 
-/** Render scale for the on-screen canvases. 2x is enough at card size. */
-const SCREEN_SCALE = 2;
+/**
+ * Ceiling on backing-store resolution per layer.
+ *
+ * This used to be a flat 1240x1960 regardless of display size. Three of those
+ * is roughly 29MB of canvas memory, and a mid-range Android simply fails the
+ * allocation — which does not throw, it just leaves you with blank canvases.
+ * Sizing to the element instead keeps a phone around 8MB.
+ */
+const MAX_CANVAS_W = CARD_W * 2;
+const MAX_DPR = 2;
 
 type Props = {
   pass: MintedPass;
@@ -19,47 +27,111 @@ type Props = {
   tiltRef: React.Ref<HTMLDivElement>;
   dragHandlers?: React.DOMAttributes<HTMLDivElement>;
   className?: string;
+  /** surfaces draw failures to the UI instead of swallowing them */
+  onDrawError?: (message: string) => void;
 };
 
-export function TidePass({ pass, photo, tiltRef, dragHandlers, className }: Props) {
+export function TidePass({
+  pass,
+  photo,
+  tiltRef,
+  dragHandlers,
+  className,
+  onDrawError,
+}: Props) {
   const canvases = useRef<Record<string, HTMLCanvasElement | null>>({});
+  const cardRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  const draw = useCallback(
+    (fonts: Fonts) => {
+      const card = cardRef.current;
+      if (!card) return;
 
-    (async () => {
-      const fonts = resolveFonts();
-      await ensureFontsLoaded(fonts);
-      if (cancelled) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+      const cssW = card.clientWidth || 320;
+      const w = Math.max(1, Math.min(Math.round(cssW * dpr), MAX_CANVAS_W));
+      const h = Math.round(w * (CARD_H / CARD_W));
 
       for (const layer of LAYERS) {
         const canvas = canvases.current[layer];
         if (!canvas) continue;
+
+        /* assigning width/height also clears the canvas, so only touch it when
+           the size actually changed — otherwise every redraw thrashes */
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w;
+          canvas.height = h;
+        }
+
         const ctx = canvas.getContext("2d");
-        if (!ctx) continue;
-        /* these canvases are reused across renders, so clear before redrawing */
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        drawCard(ctx, canvas.width, canvas.height, { pass, photo, layer, fonts });
+        if (!ctx) {
+          onDrawError?.("canvas 2d context unavailable on this browser");
+          return;
+        }
+
+        ctx.clearRect(0, 0, w, h);
+        drawCard(ctx, w, h, { pass, photo, layer, fonts });
       }
-    })();
+    },
+    [pass, photo, onDrawError],
+  );
+
+  useEffect(() => {
+    /*
+     * Draw immediately with whatever fonts are resolvable right now, then draw
+     * again once the webfonts report in. Awaiting the fonts before the first
+     * paint means any hang in document.fonts leaves the card permanently
+     * blank — a card in a fallback face for 200ms is strictly better.
+     */
+    try {
+      draw(resolveFonts());
+    } catch (err) {
+      console.error("card draw failed", err);
+      onDrawError?.(err instanceof Error ? err.message : String(err));
+    }
+
+    let cancelled = false;
+    ensureFontsLoaded(resolveFonts())
+      .then(() => {
+        if (cancelled) return;
+        draw(resolveFonts());
+      })
+      .catch((err) => {
+        /* non-fatal: the fallback-face card is already on screen */
+        console.warn("font loading failed, keeping fallback render", err);
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [pass, photo]);
+  }, [draw, onDrawError]);
+
+  /* the backing store is sized from layout, so it has to follow layout */
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card || typeof ResizeObserver === "undefined") return;
+
+    const ro = new ResizeObserver(() => {
+      try {
+        draw(resolveFonts());
+      } catch (err) {
+        console.error("card redraw failed", err);
+      }
+    });
+    ro.observe(card);
+    return () => ro.disconnect();
+  }, [draw]);
 
   return (
     <div className={`${styles.stage} ${className ?? ""}`}>
       <div ref={tiltRef} className={styles.tilt} {...dragHandlers}>
-        <div className={styles.card}>
+        <div ref={cardRef} className={styles.card}>
           {LAYERS.map((layer) => (
             <canvas
               key={layer}
               ref={(el) => {
                 canvases.current[layer] = el;
               }}
-              width={CARD_W * SCREEN_SCALE}
-              height={CARD_H * SCREEN_SCALE}
               className={styles[layer]}
               aria-hidden={layer !== "day"}
             />

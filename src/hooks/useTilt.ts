@@ -17,8 +17,30 @@ type IosDeviceOrientation = typeof DeviceOrientationEvent & {
 /** iOS gates the motion sensors behind a user gesture; nothing else does. */
 function needsMotionPermission(): boolean {
   if (typeof window === "undefined") return false;
+  if (!isSecure()) return false;
   const D = window.DeviceOrientationEvent as IosDeviceOrientation | undefined;
   return typeof D?.requestPermission === "function";
+}
+
+/**
+ * `deviceorientation` is a powerful feature and browsers only expose it on a
+ * secure origin. Served over plain HTTP — a LAN address during development,
+ * say — the event never fires no matter what you subscribe to, so the UI has
+ * to know to offer dragging instead of telling people to tilt their phone.
+ */
+function isSecure(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.isSecureContext === true;
+}
+
+function orientationUnavailable(): boolean {
+  if (typeof window === "undefined") return true;
+  return !isSecure() || typeof window.DeviceOrientationEvent === "undefined";
+}
+
+function coarsePointer(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(pointer: coarse)").matches;
 }
 
 const clamp = (v: number, lo = -1, hi = 1) => Math.min(hi, Math.max(lo, v));
@@ -75,6 +97,14 @@ export function useTilt(options: { maxTilt?: number } = {}) {
     () => false,
   );
   const permissionNeeded = promptable && !motionGranted;
+
+  /* touch device where the sensor can never fire — drag is the only option */
+  const sensorBlocked = useSyncExternalStore(
+    subscribeNever,
+    () => coarsePointer() && orientationUnavailable(),
+    () => false,
+  );
+  const isTouch = useSyncExternalStore(subscribeNever, coarsePointer, () => false);
 
   /* ---- the animation loop: ease toward target, publish as CSS vars ---- */
   useEffect(() => {
@@ -197,8 +227,8 @@ export function useTilt(options: { maxTilt?: number } = {}) {
   /* Non-iOS touch devices expose the sensor with no prompt, so just take it. */
   useEffect(() => {
     if (needsMotionPermission() || reducedMotion) return;
-    const coarse = window.matchMedia("(pointer: coarse)").matches;
-    if (!coarse) return;
+    if (orientationUnavailable()) return;
+    if (!coarsePointer()) return;
 
     let cancelled = false;
     const probe = (e: DeviceOrientationEvent) => {
@@ -227,6 +257,8 @@ export function useTilt(options: { maxTilt?: number } = {}) {
     ref,
     source,
     permissionNeeded,
+    sensorBlocked,
+    isTouch,
     reducedMotion,
     enableOrientation,
     setManual,

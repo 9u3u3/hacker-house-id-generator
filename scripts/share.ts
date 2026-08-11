@@ -22,7 +22,8 @@ await page.goto(URL_, { waitUntil: "networkidle" });
 await page.setInputFiles('input[type="file"]', PHOTO);
 await page.getByPlaceholder("your name").fill("Harsh Gaonkar");
 await page.getByPlaceholder("@you").fill("@harshg");
-await page.getByPlaceholder("typescript · rust · webgl").fill("TypeScript · Rust");
+await page.getByPlaceholder("design engineer").fill("Design Engineer");
+await page.getByPlaceholder("typescript · rust").fill("TypeScript · Rust");
 await page.waitForTimeout(1200);
 
 const t0 = Date.now();

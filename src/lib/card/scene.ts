@@ -146,7 +146,10 @@ export function drawShareScene(
   ctx.textBaseline = "alphabetic";
   ctx.fillStyle = "rgba(242,230,207,0.7)";
   ctx.font = `400 16px ${fonts.mono}`;
-  tracked(ctx, `SEAT ${pass.seat} / 247 · ${pass.serial}`, tx, pillY + 84, 1.8, "left");
+  const sub = [pass.role, pass.stack].filter(Boolean).join(" · ").toUpperCase();
+  tracked(ctx, sub, tx, pillY + 78, 1.8, "left");
+  ctx.fillStyle = "rgba(242,230,207,0.45)";
+  tracked(ctx, `PASS ${pass.serial}`, tx, pillY + 106, 1.8, "left");
 
   ctx.fillStyle = "#fee101";
   ctx.font = `700 30px ${fonts.mono}`;

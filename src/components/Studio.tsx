@@ -16,6 +16,7 @@ type Status = { kind: "idle" | "working" | "error"; message?: string };
 
 export function Studio() {
   const [name, setName] = useState("");
+  const [role, setRole] = useState("");
   const [stack, setStack] = useState("");
   const [handle, setHandle] = useState("");
   const [salt, setSalt] = useState(0);
@@ -29,8 +30,8 @@ export function Studio() {
   const tilt = useTilt();
 
   const pass = useMemo(
-    () => mint({ name, stack, handle, salt }),
-    [name, stack, handle, salt],
+    () => mint({ name, role, stack, handle, salt }),
+    [name, role, stack, handle, salt],
   );
 
   const photoSource = useMemo(
@@ -105,6 +106,7 @@ export function Studio() {
         "meta",
         JSON.stringify({
           name: pass.name,
+          role: pass.role,
           stack: pass.stack,
           handle: pass.handle,
           builderClass: pass.builderClass,
@@ -121,7 +123,7 @@ export function Studio() {
       const url = `${window.location.origin}${path}`;
       setShareUrl(url);
 
-      const text = `I'm a ${pass.builderClass} — seat ${pass.seat}/247 at Hacker House Goa 2026. Tilt the card, it doesn't show you the same thing twice.\n\n#FrameInGoa`;
+      const text = `I'm a ${pass.builderClass} at Hacker House Goa 2026 — pass ${pass.serial}. Tilt the card, it doesn't show you the same thing twice.\n\n#FrameInGoa`;
       const intent = `https://x.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
 
       window.open(intent, "_blank", "noopener,noreferrer");
@@ -210,13 +212,22 @@ export function Studio() {
             />
           </div>
 
-          <Field
-            label="STACK / ROLE"
-            value={stack}
-            onChange={setStack}
-            placeholder="typescript · rust · webgl"
-            maxLength={44}
-          />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field
+              label="ROLE"
+              value={role}
+              onChange={setRole}
+              placeholder="design engineer"
+              maxLength={22}
+            />
+            <Field
+              label="STACK"
+              value={stack}
+              onChange={setStack}
+              placeholder="typescript · rust"
+              maxLength={28}
+            />
+          </div>
 
           <div className="flex flex-wrap items-center gap-3 rounded-xl border border-paper/15 bg-green-deep/40 p-4">
             <div className="min-w-0 flex-1">

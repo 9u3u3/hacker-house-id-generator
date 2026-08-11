@@ -102,9 +102,14 @@ export default async function PassPage({
               {record.builderClass}
             </p>
           )}
-          {record.seat && (
-            <p className="mt-3 font-mono text-sm text-paper/60">
-              SEAT {record.seat} / 247 · {record.serial}
+          {(record.role || record.stack) && (
+            <p className="mt-3 font-mono text-sm text-paper/70">
+              {[record.role, record.stack].filter(Boolean).join(" · ")}
+            </p>
+          )}
+          {record.serial && (
+            <p className="mt-2 font-mono text-xs tracking-widest text-paper/50">
+              PASS {record.serial}
             </p>
           )}
         </div>

@@ -35,7 +35,8 @@ if (PHOTO) await page.setInputFiles('input[type="file"]', PHOTO);
 
 await page.getByPlaceholder("your name").fill("Harsh Gaonkar");
 await page.getByPlaceholder("@you").fill("@harshg");
-await page.getByPlaceholder("typescript · rust · webgl").fill("TypeScript · Rust · WebGL");
+await page.getByPlaceholder("design engineer").fill("Design Engineer");
+await page.getByPlaceholder("typescript · rust").fill("TypeScript · Rust");
 
 /* let the canvases redraw with fonts resolved */
 await page.waitForTimeout(1200);

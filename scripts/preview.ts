@@ -19,9 +19,9 @@ const out = join(root, ".preview");
 mkdirSync(out, { recursive: true });
 
 GlobalFonts.registerFromPath(join(root, "public/fonts/BodoniModa-Black.ttf"), "Bodoni Moda");
-GlobalFonts.registerFromPath(join(root, "public/fonts/VictorMono.ttf"), "Victor Mono");
+GlobalFonts.registerFromPath(join(root, "public/fonts/RobotoMono.ttf"), "Roboto Mono");
 
-const fonts = { display: "Bodoni Moda", mono: "Victor Mono" };
+const fonts = { display: "Bodoni Moda", mono: "Roboto Mono" };
 
 const assets: CardAssets = {
   plates: {
@@ -34,6 +34,7 @@ const assets: CardAssets = {
 
 const pass = mint({
   name: process.env.NAME ?? "Harsh Gaonkar",
+  role: process.env.ROLE ?? "Design Engineer",
   stack: process.env.STACK ?? "TypeScript · Rust",
   handle: "harshg",
   salt: 0,

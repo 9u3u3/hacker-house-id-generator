@@ -1,7 +1,7 @@
 import type { Fonts } from "./draw";
 
 /**
- * next/font hashes the family name at build time (`__Imbue_a1b2c3`), so the
+ * next/font hashes the family name at build time (`__Bodoni_a1b2c3`), so the
  * only reliable way to name it in a canvas `ctx.font` string is to read back
  * the CSS variable it exposes.
  */
@@ -12,7 +12,7 @@ export function resolveFonts(): Fonts {
   const s = getComputedStyle(document.documentElement);
   return {
     display: s.getPropertyValue("--font-bodoni").trim() || "serif",
-    mono: s.getPropertyValue("--font-victor-mono").trim() || "monospace",
+    mono: s.getPropertyValue("--font-roboto-mono").trim() || "monospace",
   };
 }
 
@@ -26,11 +26,11 @@ export async function ensureFontsLoaded(fonts: Fonts): Promise<void> {
 
   const specs = [
     `900 170px ${fonts.display}`,
-    `700 17px ${fonts.mono}`,
-    `400 17px ${fonts.mono}`,
-    `400 13px ${fonts.mono}`,
-    `700 46px ${fonts.mono}`,
-    `700 25px ${fonts.mono}`,
+    `500 22px ${fonts.mono}`,
+    `700 19px ${fonts.mono}`,
+    `700 27px ${fonts.mono}`,
+    `700 33px ${fonts.mono}`,
+    `700 40px ${fonts.mono}`,
   ];
 
   /*

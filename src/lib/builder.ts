@@ -9,6 +9,7 @@
 
 export type Pass = {
   name: string;
+  role: string;
   stack: string;
   handle: string;
   salt: number;
@@ -16,16 +17,19 @@ export type Pass = {
 
 export type MintedPass = {
   name: string;
+  /** what they do — "FULL STACK", "DESIGN ENGINEER" */
+  role: string;
+  /** what they do it in — "TYPESCRIPT · RUST" */
   stack: string;
   handle: string;
   /** e.g. "ANJUNA NIGHT-COMPILER" */
   builderClass: string;
   /** e.g. "HHG-2026-0417" */
   serial: string;
+  /** the four digits of the serial, which is what the card prints */
+  passNo: string;
   /** 001..247 — the residency only has 247 seats, so the number means something */
   seat: string;
-  /** boarding-pass detail on the sunrise layer */
-  gate: string;
   /** the line that only shows up under blacklight */
   secret: string;
   /** two 44-char passport-style lines along the bottom edge */
@@ -144,8 +148,6 @@ const SECRETS = [
   "THE SUN COMES UP EITHER WAY",
 ] as const;
 
-const GATES = ["A1", "B2", "C3", "D4", "G7", "H2", "K9", "M1", "N4", "T7"] as const;
-
 function normalize(s: string): string {
   return s.trim().replace(/\s+/g, " ");
 }
@@ -161,18 +163,19 @@ function mrzLine(raw: string): string {
 
 export function mint(input: Pass): MintedPass {
   const name = normalize(input.name) || "ANONYMOUS BUILDER";
+  const role = normalize(input.role) || "BUILDER";
   const stack = normalize(input.stack) || "FULL STACK";
   const handle = normalize(input.handle).replace(/^@/, "");
 
   const seed = hash(
-    `${name.toLowerCase()}|${stack.toLowerCase()}|${handle.toLowerCase()}|${input.salt}`,
+    `${name.toLowerCase()}|${role.toLowerCase()}|${stack.toLowerCase()}|${handle.toLowerCase()}|${input.salt}`,
   );
   const f = (label: string) => fieldOf(seed, label);
 
   const builderClass = `${pick(PLACES, f("place"))} ${pick(ARCHETYPES, f("archetype"))}`;
-  const serial = `HHG-2026-${String((f("serial") >>> 8) % 10000).padStart(4, "0")}`;
+  const passNo = String((f("serial") >>> 8) % 10000).padStart(4, "0");
+  const serial = `HHG-2026-${passNo}`;
   const seat = String(((f("seat") >>> 8) % 247) + 1).padStart(3, "0");
-  const gate = pick(GATES, f("gate"));
   const secret = pick(SECRETS, f("secret"));
 
   /* Passport-shaped, not passport-valid. It reads as a real travel document at
@@ -190,12 +193,13 @@ export function mint(input: Pass): MintedPass {
 
   return {
     name,
+    role,
     stack,
     handle,
     builderClass,
     serial,
+    passNo,
     seat,
-    gate,
     secret,
     mrz,
   };

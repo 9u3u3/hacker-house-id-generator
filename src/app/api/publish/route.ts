@@ -46,6 +46,7 @@ export async function POST(req: Request) {
 
   const record: PassRecord = {
     name: String(meta.name ?? "").slice(0, 60),
+    role: String(meta.role ?? "").slice(0, 40),
     stack: String(meta.stack ?? "").slice(0, 80),
     handle: String(meta.handle ?? "").slice(0, 40),
     builderClass: String(meta.builderClass ?? "").slice(0, 60),

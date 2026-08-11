@@ -53,7 +53,8 @@ export function Diagnostics() {
         ["day layer", drawn],
         ["fonts api", String(!!document.fonts)],
         ["fonts status", document.fonts?.status ?? "n/a"],
-        ["imbue loaded", String(document.fonts?.check?.('700 74px "Imbue"') ?? "n/a")],
+        ["display font", String(document.fonts?.check?.('900 74px "Bodoni Moda"') ?? "n/a")],
+        ["mono font", String(document.fonts?.check?.('700 40px "Roboto Mono"') ?? "n/a")],
         ["roundRect", String(typeof CanvasRenderingContext2D !== "undefined" &&
           "roundRect" in CanvasRenderingContext2D.prototype)],
         ["ua", navigator.userAgent.slice(0, 64)],

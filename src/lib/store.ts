@@ -17,6 +17,7 @@ function hasVercelBlob(): boolean {
 
 export type PassRecord = {
   name: string;
+  role: string;
   stack: string;
   handle: string;
   builderClass: string;

@@ -47,8 +47,8 @@
   --color-night-uv: var(--night-uv);
 
   --font-display: var(--font-bodoni);
-  --font-mono: var(--font-victor-mono);
-  --font-sans: var(--font-victor-mono);
+  --font-mono: var(--font-roboto-mono);
+  --font-sans: var(--font-roboto-mono);
 }
 
 html {
@@ -59,12 +59,12 @@ html {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-victor-mono), ui-monospace, monospace;
+  font-family: var(--font-roboto-mono), ui-monospace, monospace;
   /* the tilt surface should never rubber-band the page on mobile */
   overscroll-behavior-y: none;
 }
 
-/* Imbue is a display serif — it wants to be big, tight and confident. */
+/* Bodoni Moda Black is a didone — it wants to be big, tight and confident. */
 .font-display {
   font-family: var(--font-bodoni), ui-serif, Georgia, serif;
   font-weight: 900;

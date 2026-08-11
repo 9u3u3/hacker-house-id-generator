@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
-import { Victor_Mono } from "next/font/google";
+import { Roboto_Mono } from "next/font/google";
 import "./globals.css";
 
 /*
@@ -15,8 +15,8 @@ const bodoni = localFont({
   display: "swap",
 });
 
-const victorMono = Victor_Mono({
-  variable: "--font-victor-mono",
+const robotoMono = Roboto_Mono({
+  variable: "--font-roboto-mono",
   subsets: ["latin"],
   display: "swap",
 });
@@ -38,7 +38,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${bodoni.variable} ${victorMono.variable} h-full antialiased`}
+      className={`${bodoni.variable} ${robotoMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>

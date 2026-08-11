@@ -1,24 +1,26 @@
 /**
  * Turns the raw design exports into normalised plates the renderer can use.
  *
- * The three designs were produced independently, so their printed photo windows
- * are not in the same place or the same size — measured at up to 26px of offset
- * and 10% of scale. That matters because the renderer draws the user's photo at
- * a single rect: on two of three plates it would sit misaligned inside the
- * printed frame, and mid-tilt the interlace would show a doubled edge across
- * someone's face.
+ * The three designs were produced independently, so nothing about them lines
+ * up: photo windows differ by up to 26px of offset and 10% of scale, and so do
+ * the cards' own printed edges.
  *
- * So each plate is warped so its own window lands on a canonical rect, taken
- * from the day plate (the layer that exports, so it stays undistorted). The
- * surrounding artwork differs between plates by design, so a few percent of
- * scale on it costs nothing.
+ * Only one of those can be made exact, because a scale-and-translate has just
+ * enough freedom to pin one rectangle. Registering on the photo window was the
+ * wrong call: it left each card's border at a different size, which is the one
+ * mismatch nobody can miss — the sunrise border scaled past the canvas and got
+ * cropped, the night one sat 23px inside it, and tilting between them visibly
+ * resized the whole card.
  *
- * Text is not a concern here: the renderer draws it at identical coordinates on
- * every layer, so it registers across layers by construction.
+ * So the border is the anchor, and the window is what gives. The renderer gets
+ * a per-layer window rect and draws the photo into whichever one it's on, so
+ * the photo still sits correctly inside its printed frame on every plate; what
+ * moves instead is a few pixels of photo position mid-tilt, behind a frame that
+ * no longer moves at all.
  *
  *   bun run scripts/plates.ts
  */
-import { createCanvas, loadImage, type Image } from "@napi-rs/canvas";
+import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -134,86 +136,60 @@ for (const p of plates) {
   );
 }
 
-/* Canonical space = the day plate cropped to its card. */
+/* Canonical space = the day plate's card, at its own pixel size. Every plate is
+   mapped onto it, so all three fill the output exactly and the border is
+   identical across layers by construction. */
 const ref = plates[0];
 const OUT_W = ref.card.w;
 const OUT_H = ref.card.h;
-const canonWin: Rect = {
-  x: ref.win.x - ref.card.x,
-  y: ref.win.y - ref.card.y,
-  w: ref.win.w,
-  h: ref.win.h,
-};
-console.log(
-  `\ncanonical plate ${OUT_W}x${OUT_H}, window ${canonWin.w}x${canonWin.h} @ ${canonWin.x},${canonWin.y}`,
-);
+console.log(`\ncanonical plate ${OUT_W}x${OUT_H} (from the ${ref.name} card border)`);
 
-/* Solve each plate's scale+translate so its window matches canonical, then work
-   out how much of the output each one actually covers. */
-const warps = plates.map((p) => {
-  const sx = canonWin.w / p.win.w;
-  const sy = canonWin.h / p.win.h;
-  const tx = canonWin.x - p.win.x * sx;
-  const ty = canonWin.y - p.win.y * sy;
-  return { p, sx, sy, tx, ty, left: tx, top: ty, right: tx + p.W * sx, bottom: ty + p.H * sy };
-});
+const windows: Record<string, Rect> = {};
 
-/* A plate scaled down leaves a gap at the edges. Crop every plate to the region
-   all of them cover, so no plate shows blank border. */
-const inset = {
-  left: Math.max(0, ...warps.map((w) => Math.ceil(w.left))),
-  top: Math.max(0, ...warps.map((w) => Math.ceil(w.top))),
-  right: Math.min(OUT_W, ...warps.map((w) => Math.floor(w.right))),
-  bottom: Math.min(OUT_H, ...warps.map((w) => Math.floor(w.bottom))),
-};
-const cropW = inset.right - inset.left;
-const cropH = inset.bottom - inset.top;
-console.log(
-  `common coverage: ${cropW}x${cropH} (inset l=${inset.left} t=${inset.top} r=${OUT_W - inset.right} b=${OUT_H - inset.bottom})`,
-);
+for (const p of plates) {
+  const sx = OUT_W / p.card.w;
+  const sy = OUT_H / p.card.h;
+  const tx = -p.card.x * sx;
+  const ty = -p.card.y * sy;
 
-for (const w of warps) {
-  const staged = createCanvas(OUT_W, OUT_H);
-  const sg = staged.getContext("2d");
-  sg.imageSmoothingEnabled = true;
-  sg.imageSmoothingQuality = "high";
-  sg.drawImage(w.p.img, w.tx, w.ty, w.p.W * w.sx, w.p.H * w.sy);
-
-  const out = createCanvas(cropW, cropH);
-  const og = out.getContext("2d");
-  og.drawImage(
-    staged as unknown as Image,
-    inset.left,
-    inset.top,
-    cropW,
-    cropH,
-    0,
-    0,
-    cropW,
-    cropH,
-  );
+  const out = createCanvas(OUT_W, OUT_H);
+  const g = out.getContext("2d");
+  g.imageSmoothingEnabled = true;
+  g.imageSmoothingQuality = "high";
+  g.drawImage(p.img, tx, ty, p.W * sx, p.H * sy);
 
   /* WebP, not PNG: these are photographic illustrations, and three lossless
      plates came to 7.7MB — far too heavy to ship to a phone. Quality 82 puts
      them around 5% of that with no visible difference at card size. */
   const webp = out.toBuffer("image/webp", 82);
-  writeFileSync(join(OUT, `${w.p.name}.webp`), webp);
+  writeFileSync(join(OUT, `${p.name}.webp`), webp);
+
+  windows[p.name] = {
+    x: Math.round(p.win.x * sx + tx),
+    y: Math.round(p.win.y * sy + ty),
+    w: Math.round(p.win.w * sx),
+    h: Math.round(p.win.h * sy),
+  };
+
   console.log(
-    `  ${w.p.name.padEnd(8)} scale ${w.sx.toFixed(4)}x${w.sy.toFixed(4)} ` +
-      `offset ${w.tx.toFixed(1)},${w.ty.toFixed(1)}  ${(webp.length / 1024).toFixed(0)}KB`,
+    `  ${p.name.padEnd(8)} scale ${sx.toFixed(4)}x${sy.toFixed(4)} ` +
+      `${(webp.length / 1024).toFixed(0)}KB`,
   );
 }
 
-/* Window position in the final cropped plate — the renderer needs this. */
-const finalWin: Rect = {
-  x: canonWin.x - inset.left,
-  y: canonWin.y - inset.top,
-  w: canonWin.w,
-  h: canonWin.h,
-};
-console.log(`\nPLATE ${cropW}x${cropH}`);
+/* What the renderer needs: the plate size, and where each layer prints its
+   window. The spread across layers is the price of anchoring on the border. */
+console.log(`\nPLATE_W = ${OUT_W}; PLATE_H = ${OUT_H};`);
+console.log("WINDOWS = {");
+for (const [name, w] of Object.entries(windows)) {
+  console.log(`  ${name}: { x: ${w.x}, y: ${w.y}, w: ${w.w}, h: ${w.h} },`);
+}
+console.log("};");
+
+const xs = Object.values(windows);
+const spread = (k: keyof Rect) =>
+  Math.max(...xs.map((w) => w[k])) - Math.min(...xs.map((w) => w[k]));
 console.log(
-  `WINDOW ${finalWin.w}x${finalWin.h} @ ${finalWin.x},${finalWin.y}  ` +
-    `(${((finalWin.x / cropW) * 100).toFixed(2)}%, ${((finalWin.y / cropH) * 100).toFixed(2)}%, ` +
-    `${((finalWin.w / cropW) * 100).toFixed(2)}%, ${((finalWin.h / cropH) * 100).toFixed(2)}%)`,
+  `\nwindow spread across layers: x±${spread("x")} y±${spread("y")} ` +
+    `w±${spread("w")} h±${spread("h")}`,
 );

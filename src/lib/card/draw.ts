@@ -1,6 +1,16 @@
 import type { MintedPass } from "@/lib/builder";
 import type { CardAssets } from "./assets";
-import { BADGE, INK, NAME, PLATE_H, PLATE_W, ROW, SECRET, WINDOW } from "./layout";
+import {
+  BADGE,
+  CLASS_CHIP,
+  INK,
+  NAME,
+  PLATE_H,
+  PLATE_W,
+  ROW,
+  SECRET,
+  WINDOWS,
+} from "./layout";
 import type { LayerName } from "./theme";
 
 export type Fonts = { display: string; mono: string };
@@ -142,26 +152,45 @@ function roundRectPath(
 /**
  * The photo, inside the printed window.
  *
- * Inset so the plate's own pink keyline stays visible — the photo sits *within*
- * the frame rather than covering it.
+ * The window belongs to the layer, not to the card — each plate prints it in a
+ * slightly different place (see `WINDOWS`). Inset so the plate's own pink
+ * keyline stays visible: the photo sits *within* the frame rather than covering
+ * it.
  */
 function drawPhoto(
   ctx: CanvasRenderingContext2D,
   photo: PhotoSource | null,
   layer: LayerName,
 ) {
+  const win = WINDOWS[layer];
   const inset = 9;
-  const x = WINDOW.x + inset;
-  const y = WINDOW.y + inset;
-  const w = WINDOW.w - inset * 2;
-  const h = WINDOW.h - inset * 2;
+  const x = win.x + inset;
+  const y = win.y + inset;
+  const w = win.w - inset * 2;
+  const h = win.h - inset * 2;
 
   ctx.save();
   roundRectPath(ctx, x, y, w, h, 18);
   ctx.clip();
 
   if (photo) {
-    ctx.drawImage(photo.image, photo.sx, photo.sy, photo.sw, photo.sh, x, y, w, h);
+    /* The crop was chosen for the reference window's aspect, and this one may
+       differ by a few percent. Cover rather than stretch: losing a sliver off
+       an edge is invisible, a squashed face is not. */
+    const scale = Math.max(w / photo.sw, h / photo.sh);
+    const dw = photo.sw * scale;
+    const dh = photo.sh * scale;
+    ctx.drawImage(
+      photo.image,
+      photo.sx,
+      photo.sy,
+      photo.sw,
+      photo.sh,
+      x + (w - dw) / 2,
+      y + (h - dh) / 2,
+      dw,
+      dh,
+    );
 
     /* pull the portrait toward each plate's light so it belongs to the scene,
        but gently — heavy blending turns a face into a silhouette */
@@ -244,30 +273,78 @@ function drawName(
   ctx.restore();
 }
 
-/** STACK / SEAT / GATE, labels and values both — the plates carry neither. */
+/**
+ * The generated builder title, on its own printed chip.
+ *
+ * Identical on all three layers, which is deliberate: it's the one field that
+ * says who the holder is, so it should sit still while the weather changes
+ * behind it.
+ */
+function drawClassChip(
+  ctx: CanvasRenderingContext2D,
+  pass: MintedPass,
+  fonts: Fonts,
+) {
+  const title = pass.builderClass;
+
+  ctx.save();
+  ctx.textBaseline = "alphabetic";
+
+  /* size the title to fit the chip, then size the chip to the title */
+  let size = CLASS_CHIP.size;
+  ctx.font = `700 ${size}px ${fonts.mono}`;
+  const inner = CLASS_CHIP.maxWidth - CLASS_CHIP.padX * 2;
+  while (trackedWidth(ctx, title, 2) > inner && size > 16) {
+    size -= 1;
+    ctx.font = `700 ${size}px ${fonts.mono}`;
+  }
+
+  const w = trackedWidth(ctx, title, 2) + CLASS_CHIP.padX * 2;
+  const h = CLASS_CHIP.height;
+  const x = (PLATE_W - w) / 2;
+  const y = CLASS_CHIP.centerY - h / 2;
+
+  /* the chip borrows the photo window's treatment so it reads as printed */
+  roundRectPath(ctx, x, y, w, h, 14);
+  ctx.fillStyle = "rgba(244,235,216,0.96)";
+  ctx.fill();
+  ctx.strokeStyle = INK.pink;
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  /* centred on the cap height, not the em box — a mono's descender space would
+     otherwise push the line visibly high in the chip */
+  const cap = ctx.measureText(title).actualBoundingBoxAscent || size * 0.72;
+  ctx.textAlign = "center";
+  ctx.fillStyle = INK.green;
+  tracked(ctx, title, PLATE_W / 2, CLASS_CHIP.centerY + cap / 2, 2, "center");
+
+  ctx.restore();
+}
+
+/**
+ * STACK / ROLE / PASS NO. — labels, values and rules, none of which the plates
+ * carry.
+ *
+ * These are the fields an ID card actually has to answer. The boarding-pass
+ * seat and gate that used to live here were set dressing borrowed from a
+ * different document, and read as filler on a card whose job is to say what
+ * someone builds.
+ */
 function drawDataRow(
   ctx: CanvasRenderingContext2D,
   pass: MintedPass,
-  layer: LayerName,
   fonts: Fonts,
 ) {
-  const values =
-    layer === "sunrise"
-      ? [pass.stack.toUpperCase(), "HH 247", pass.gate]
-      : layer === "night"
-        ? [pass.stack.toUpperCase(), `${pass.seat} / 247`, "UV"]
-        : [pass.stack.toUpperCase(), `${pass.seat} / 247`, pass.gate];
-
-  const labels =
-    layer === "sunrise" ? ["STACK", "FLIGHT", "GATE"] : layer === "night"
-      ? ["STACK", "SEAT", "CLEARANCE"]
-      : ["STACK", "SEAT", "GATE"];
+  const labels = ["STACK", "ROLE", "PASS NO."];
+  const values = [
+    pass.stack.toUpperCase(),
+    pass.role.toUpperCase(),
+    pass.passNo,
+  ];
 
   /* all three plates print a light bottom panel (measured luma 211/203/170),
      so the strip is dark ink on every layer — night included */
-  const ink = INK.green;
-  const accent = INK.pink;
-
   ctx.save();
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
@@ -275,23 +352,23 @@ function drawDataRow(
   for (const [i, label] of labels.entries()) {
     const cx = ROW.columns[i];
 
-    ctx.fillStyle = "rgba(13,59,46,0.72)";
-    ctx.font = `700 ${ROW.labelSize}px ${fonts.mono}`;
+    ctx.fillStyle = "rgba(13,59,46,0.70)";
+    ctx.font = `500 ${ROW.labelSize}px ${fonts.mono}`;
     tracked(ctx, label, cx, ROW.labelBaseline, 3.4, "center");
 
-    /* the middle column is the one the design sets in pink */
-    ctx.fillStyle = i === 1 ? accent : ink;
+    /* the pass number is the one the design sets in pink */
+    ctx.fillStyle = i === 2 ? INK.pink : INK.green;
     const maxW = ROW.widths[i];
     let size = ROW.valueSize;
     ctx.font = `700 ${size}px ${fonts.mono}`;
-    while (trackedWidth(ctx, values[i], 1.5) > maxW && size > 16) {
+    while (trackedWidth(ctx, values[i], 1.5) > maxW && size > 15) {
       size -= 1;
       ctx.font = `700 ${size}px ${fonts.mono}`;
     }
     tracked(ctx, values[i], cx, ROW.valueBaseline, 1.5, "center");
   }
 
-  ctx.strokeStyle = "rgba(13,59,46,0.32)";
+  ctx.strokeStyle = "rgba(13,59,46,0.30)";
   ctx.lineWidth = 2;
   for (const x of ROW.dividers) {
     ctx.beginPath();
@@ -351,7 +428,8 @@ export function drawCard(
   /* the badge straddles the name, so it paints after it */
   ctx.drawImage(assets.badge, BADGE.x, BADGE.y, BADGE.w, BADGE.h);
 
-  drawDataRow(ctx, pass, layer, fonts);
+  drawClassChip(ctx, pass, fonts);
+  drawDataRow(ctx, pass, fonts);
   if (layer === "night") drawSecret(ctx, pass, fonts);
 
   ctx.restore();

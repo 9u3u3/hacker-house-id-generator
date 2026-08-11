@@ -43,3 +43,5 @@ next-env.d.ts
 .blob-store/
 
 certificates
+# raw design uploads — large; the normalised plates are what ship
+public/plates/incoming/

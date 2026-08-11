@@ -101,24 +101,8 @@ body {
   }
 }
 
-/* second ticker row runs opposite the first, so the two read as one
-   deliberate rhythm rather than a duplicated effect */
-.marquee-reverse {
-  animation-name: marquee-reverse;
-}
-
-@keyframes marquee-reverse {
-  from {
-    transform: translateX(-50%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .marquee,
-  .marquee-reverse {
+  .marquee {
     animation: none;
   }
 }

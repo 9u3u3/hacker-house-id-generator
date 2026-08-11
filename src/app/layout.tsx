@@ -21,10 +21,33 @@ const robotoMono = Roboto_Mono({
   display: "swap",
 });
 
+/* Vercel sets these automatically; the literal domain is the fallback for
+   local dev, where no external crawler will ever fetch this anyway. */
+const SITE_URL =
+  process.env.VERCEL_PROJECT_PRODUCTION_URL ??
+  process.env.VERCEL_URL ??
+  "hacker-house-id-generator.vercel.app";
+
+const TITLE = "HH Goa 2026 — Tide Pass";
+const DESCRIPTION =
+  "Mint your Hacker House Goa 2026 builder ID. Tilt it to change the time of day.";
+
 export const metadata: Metadata = {
-  title: "HH Goa 2026 — Tide Pass",
-  description:
-    "Mint your Hacker House Goa 2026 builder ID. Tilt it to change the time of day.",
+  metadataBase: new URL(`https://${SITE_URL}`),
+  title: TITLE,
+  description: DESCRIPTION,
+  openGraph: {
+    title: TITLE,
+    description: DESCRIPTION,
+    siteName: "HH Goa 2026",
+    type: "website",
+  },
+  twitter: {
+    /* the whole point: X must render the generated graphic, not a thumbnail */
+    card: "summary_large_image",
+    title: TITLE,
+    description: DESCRIPTION,
+  },
 };
 
 export const viewport: Viewport = {

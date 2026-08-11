@@ -28,9 +28,6 @@ export type MintedPass = {
   gate: string;
   /** the line that only shows up under blacklight */
   secret: string;
-  /** index into the vector sigil set — drawn as a path, never as a glyph, so it
-   *  can't land as tofu in a font that lacks the codepoint */
-  sigil: number;
   /** two 44-char passport-style lines along the bottom edge */
   mrz: [string, string];
 };
@@ -147,9 +144,6 @@ const SECRETS = [
   "THE SUN COMES UP EITHER WAY",
 ] as const;
 
-/** How many vector sigils `drawSigil` knows how to draw. */
-export const SIGIL_COUNT = 12;
-
 const GATES = ["A1", "B2", "C3", "D4", "G7", "H2", "K9", "M1", "N4", "T7"] as const;
 
 function normalize(s: string): string {
@@ -180,7 +174,6 @@ export function mint(input: Pass): MintedPass {
   const seat = String(((f("seat") >>> 8) % 247) + 1).padStart(3, "0");
   const gate = pick(GATES, f("gate"));
   const secret = pick(SECRETS, f("secret"));
-  const sigil = (f("sigil") >>> 8) % SIGIL_COUNT;
 
   /* Passport-shaped, not passport-valid. It reads as a real travel document at
      a glance, which is the entire job of this strip. */
@@ -204,7 +197,6 @@ export function mint(input: Pass): MintedPass {
     seat,
     gate,
     secret,
-    sigil,
     mrz,
   };
 }

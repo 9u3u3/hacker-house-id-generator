@@ -1,10 +1,17 @@
 import type { Metadata, Viewport } from "next";
-import { Imbue, Victor_Mono } from "next/font/google";
+import localFont from "next/font/local";
+import { Victor_Mono } from "next/font/google";
 import "./globals.css";
 
-const imbue = Imbue({
-  variable: "--font-imbue",
-  subsets: ["latin"],
+/*
+ * Bodoni Moda, instanced at wght=900 opsz=6 by scripts (the variable font's
+ * display optical sizes thin the hairlines to nothing at this weight). Served
+ * locally so the canvas renderer and the browser agree exactly.
+ */
+const bodoni = localFont({
+  src: "../../public/fonts/BodoniModa-Black.ttf",
+  variable: "--font-bodoni",
+  weight: "900",
   display: "swap",
 });
 
@@ -31,7 +38,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${imbue.variable} ${victorMono.variable} h-full antialiased`}
+      className={`${bodoni.variable} ${victorMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>

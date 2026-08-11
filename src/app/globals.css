@@ -46,7 +46,7 @@
   --color-night-deep: var(--night-deep);
   --color-night-uv: var(--night-uv);
 
-  --font-display: var(--font-imbue);
+  --font-display: var(--font-bodoni);
   --font-mono: var(--font-victor-mono);
   --font-sans: var(--font-victor-mono);
 }
@@ -66,8 +66,8 @@ body {
 
 /* Imbue is a display serif — it wants to be big, tight and confident. */
 .font-display {
-  font-family: var(--font-imbue), ui-serif, Georgia, serif;
-  font-weight: 700;
+  font-family: var(--font-bodoni), ui-serif, Georgia, serif;
+  font-weight: 900;
   line-height: 0.86;
   letter-spacing: -0.01em;
 }

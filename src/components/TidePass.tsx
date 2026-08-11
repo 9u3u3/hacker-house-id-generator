@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import type { MintedPass } from "@/lib/builder";
+import { loadCardAssets, type CardAssets } from "@/lib/card/assets";
 import { drawCard, type Fonts, type PhotoSource } from "@/lib/card/draw";
 import { ensureFontsLoaded, resolveFonts } from "@/lib/card/fonts";
 import { CARD_H, CARD_W, type LayerName } from "@/lib/card/theme";
@@ -42,8 +43,11 @@ export function TidePass({
   const canvases = useRef<Record<string, HTMLCanvasElement | null>>({});
   const cardRef = useRef<HTMLDivElement | null>(null);
 
+  const assets = useRef<CardAssets | null>(null);
+
   const draw = useCallback(
     (fonts: Fonts) => {
+      if (!assets.current) return;
       const card = cardRef.current;
       if (!card) return;
 
@@ -70,7 +74,7 @@ export function TidePass({
         }
 
         ctx.clearRect(0, 0, w, h);
-        drawCard(ctx, w, h, { pass, photo, layer, fonts });
+        drawCard(ctx, w, h, { pass, photo, layer, fonts, assets: assets.current });
       }
     },
     [pass, photo, onDrawError],
@@ -83,22 +87,22 @@ export function TidePass({
      * paint means any hang in document.fonts leaves the card permanently
      * blank — a card in a fallback face for 200ms is strictly better.
      */
-    try {
-      draw(resolveFonts());
-    } catch (err) {
-      console.error("card draw failed", err);
-      onDrawError?.(err instanceof Error ? err.message : String(err));
-    }
-
     let cancelled = false;
-    ensureFontsLoaded(resolveFonts())
-      .then(() => {
+
+    /* artwork first — nothing can be drawn without the plates */
+    loadCardAssets()
+      .then((loaded) => {
         if (cancelled) return;
+        assets.current = loaded;
         draw(resolveFonts());
+        return ensureFontsLoaded(resolveFonts());
+      })
+      .then(() => {
+        if (!cancelled) draw(resolveFonts());
       })
       .catch((err) => {
-        /* non-fatal: the fallback-face card is already on screen */
-        console.warn("font loading failed, keeping fallback render", err);
+        console.error("card render failed", err);
+        onDrawError?.(err instanceof Error ? err.message : String(err));
       });
 
     return () => {

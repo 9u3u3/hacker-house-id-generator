@@ -4,14 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MotionStatus } from "@/hooks/useTilt";
 import { mint } from "@/lib/builder";
 import { resolveFonts, ensureFontsLoaded } from "@/lib/card/fonts";
+import { loadCardAssets } from "@/lib/card/assets";
 import { renderShareBlob } from "@/lib/card/scene";
-import { CARD_H, CARD_W } from "@/lib/card/theme";
+import { PHOTO_ASPECT } from "@/lib/card/layout";
 import { computeCrop, loadPhoto, type LoadedPhoto } from "@/lib/photo";
 import { useTilt } from "@/hooks/useTilt";
 import { Diagnostics } from "./Diagnostics";
 import { TidePass } from "./TidePass";
-
-const CARD_ASPECT = CARD_W / CARD_H;
 
 type Status = { kind: "idle" | "working" | "error"; message?: string };
 
@@ -35,7 +34,7 @@ export function Studio() {
   );
 
   const photoSource = useMemo(
-    () => (photo ? computeCrop(photo, CARD_ASPECT) : null),
+    () => (photo ? computeCrop(photo, PHOTO_ASPECT) : null),
     [photo],
   );
 
@@ -43,6 +42,7 @@ export function Studio() {
      and a cold first draw renders the card in a fallback serif. */
   useEffect(() => {
     void ensureFontsLoaded(resolveFonts());
+    void loadCardAssets();
   }, []);
 
   const handleFile = useCallback(async (file: File | undefined | null) => {
@@ -65,8 +65,8 @@ export function Studio() {
     setStatus({ kind: "working", message: "rendering" });
     try {
       const fonts = resolveFonts();
-      await ensureFontsLoaded(fonts);
-      const blob = await renderShareBlob({ pass, photo: photoSource, fonts });
+      const [assets] = await Promise.all([loadCardAssets(), ensureFontsLoaded(fonts)]);
+      const blob = await renderShareBlob({ pass, photo: photoSource, fonts, assets });
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -96,8 +96,8 @@ export function Studio() {
     setStatus({ kind: "working", message: "publishing" });
     try {
       const fonts = resolveFonts();
-      await ensureFontsLoaded(fonts);
-      const blob = await renderShareBlob({ pass, photo: photoSource, fonts });
+      const [assets] = await Promise.all([loadCardAssets(), ensureFontsLoaded(fonts)]);
+      const blob = await renderShareBlob({ pass, photo: photoSource, fonts, assets });
 
       const form = new FormData();
       form.append("image", blob, "pass.png");

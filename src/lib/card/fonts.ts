@@ -11,7 +11,7 @@ export function resolveFonts(): Fonts {
   }
   const s = getComputedStyle(document.documentElement);
   return {
-    display: s.getPropertyValue("--font-imbue").trim() || "serif",
+    display: s.getPropertyValue("--font-bodoni").trim() || "serif",
     mono: s.getPropertyValue("--font-victor-mono").trim() || "monospace",
   };
 }
@@ -25,11 +25,12 @@ export async function ensureFontsLoaded(fonts: Fonts): Promise<void> {
   if (typeof document === "undefined" || !document.fonts) return;
 
   const specs = [
-    `700 74px ${fonts.display}`,
+    `900 170px ${fonts.display}`,
     `700 17px ${fonts.mono}`,
     `400 17px ${fonts.mono}`,
     `400 13px ${fonts.mono}`,
-    `400 6px ${fonts.mono}`,
+    `700 46px ${fonts.mono}`,
+    `700 25px ${fonts.mono}`,
   ];
 
   /*

@@ -135,9 +135,19 @@ export function useTilt(options: { maxTilt?: number } = {}) {
       if (el) {
         el.style.setProperty("--tx", c.x.toFixed(4));
         el.style.setProperty("--ty", c.y.toFixed(4));
-        /* pre-split reveal amounts so the CSS doesn't need sign logic */
-        el.style.setProperty("--reveal-left", Math.max(0, -c.x).toFixed(4));
-        el.style.setProperty("--reveal-right", Math.max(0, c.x).toFixed(4));
+        /*
+         * Pre-split reveal amounts so the CSS needs no sign logic, and shape
+         * them with a power curve.
+         *
+         * The three plates each print their own chrome — the CODE/BUILD/CHAI
+         * column, the date rule — and those landed at slightly different
+         * heights, so a half-revealed layer shows both copies at once. Ramping
+         * steeply keeps the card at a clean single state for most of the tilt
+         * and passes through the doubled zone quickly.
+         */
+        const ramp = (v: number) => Math.pow(Math.max(0, v), 1.7);
+        el.style.setProperty("--reveal-left", ramp(-c.x).toFixed(4));
+        el.style.setProperty("--reveal-right", ramp(c.x).toFixed(4));
       }
       raf.current = requestAnimationFrame(tick);
     };

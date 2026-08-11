@@ -57,11 +57,15 @@ html {
 }
 
 body {
-  background: var(--background);
   color: var(--foreground);
   font-family: var(--font-roboto-mono), ui-monospace, monospace;
   /* the tilt surface should never rubber-band the page on mobile */
   overscroll-behavior-y: none;
+  /* no background here: an opaque body paints in front of any fixed,
+     negative-z-index element regardless of DOM nesting, which hides
+     Backdrop entirely. html's dark fallback below still covers the
+     pre-hydration paint; routes that need a flat green own it directly
+     on their own root element (see /id/[slug]). */
 }
 
 /* Bodoni Moda Black is a didone — it wants to be big, tight and confident. */

@@ -103,7 +103,7 @@ export function Studio() {
   const ready = name.trim().length > 0;
 
   return (
-    <div className="min-h-dvh bg-green text-paper">
+    <div className="min-h-dvh text-paper">
       <Backdrop />
       <Marquee />
 

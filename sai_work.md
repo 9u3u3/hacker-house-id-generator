@@ -3,10 +3,10 @@
 Track: the photo → render → publish → share pipeline.
 Master list with full research: [`listOfFixes.md`](./listOfFixes.md)
 
-Item 1 is **mandatory** and lands first. Item 5 (CREW mode) is the headline
-feature of the whole branch. Item 6 (rarity tiers) was originally John's — it's
-here now because it shares CREW's files, see the note there. Item 7 is stretch —
-only if 1–6 are green.
+Item 1 is **mandatory** and lands first. Item 6 (CREW mode) is the headline
+feature of the whole branch. Item 7 (rarity tiers) was originally John's — it's
+here now because it shares CREW's files, see the note there. Item 8 is stretch —
+only if 1–7 are green.
 
 ---
 
@@ -18,7 +18,7 @@ Two research findings drive this track:
   "Build This → Task #1" panel says: *"Design your own HH Goa 2026 themed photo
   frame generator. **Use that same generator to bring your teammates into one
   combined frame.** Post it on X with a quick how-to..."* The combined team frame
-  appears **nowhere in the PDF**, and the app is single-person only. That's item 5.
+  appears **nowhere in the PDF**, and the app is single-person only. That's item 6.
 - **Submissions are ranked publicly** at `hhgoa.com/radar` — 137 teams, with
   columns for X-post **Views** and **Score**. The share button being broken is a
   *scoring* bug, not a polish bug. That's item 1.
@@ -114,7 +114,23 @@ subject-aware auto-crop still the default. The brief says "don't assume users wi
 crop first" — auto-crop handles that, but when it guesses wrong the user is
 currently stuck with the result.
 
-## 5. F1 — CREW mode: a combined team pass ★ the headline feature
+## 5. Field opacity — legibility over the backdrop
+
+The `Field` component (`Studio.tsx`, the NAME/X HANDLE/ROLE/STACK inputs) renders
+at `bg-green-deep/50` — 50% opacity. That was fine against a flat green page, but
+now that John's backdrop (V1) puts real artwork behind the studio, the
+translucency lets it bleed through the fields themselves — the sunrise scene's
+"COA BEACH" signage is visible inside the X HANDLE and STACK boxes in testing,
+competing with the placeholder text.
+
+Bump the input background to something more opaque — `bg-green-deep/80` or
+higher — so the fields read as solid UI chrome sitting on top of the backdrop,
+not another translucent layer fighting it for attention. Same idea applies to the
+BUILDER CLASS chip container (`bg-green-deep/40`) if it shows the same bleed-
+through; worth a glance while you're in there, but the four input fields are the
+actual complaint. Quick, isolated, `Field`'s className is the only thing to touch.
+
+## 6. F1 — CREW mode: a combined team pass ★ the headline feature
 
 Let the user add **2–3 people** (photo + name each) and render **one combined
 pass** from the same canvas pipeline, sharable as a single image.
@@ -141,13 +157,13 @@ sanctions. So this is a **combined team ID card**, several people on one pass �
   record, so the crew image shares through the existing path — `PassRecord`
   (`src/lib/store.ts:18`) just needs an optional members array.
 
-**On rarity tiers (item 6, next):** that item was originally John's, blocked on
+**On rarity tiers (item 7, next):** that item was originally John's, blocked on
 this exact restructure of `mint()`. Rather than have him wait idle and rebase on
 top afterward, it's moved to this list — you now own `builder.ts`/`draw.ts`
 outright, no handoff needed. Do CREW first; rarity builds on the shape it leaves
 `mint()` in.
 
-## 6. A3 — Rarity tiers on the builder class
+## 7. A3 — Rarity tiers on the builder class
 
 `mint()` already derives a stable class from a hash (`src/lib/builder.ts:175`) —
 after CREW, check that hash derivation still applies cleanly per-member. Bucket
@@ -159,7 +175,7 @@ Keep the foil treatment in a new `src/lib/card/foil.ts` and touch `draw.ts` at a
 single call site, same as any other draw-path addition — no coordination needed
 now that both files are yours.
 
-## 7. A1 — Animated MP4/GIF export — **stretch only**
+## 8. A1 — Animated MP4/GIF export — **stretch only**
 
 Highest payoff on the whole list, and the reason it's stretch is an honest cost.
 
@@ -193,7 +209,7 @@ Offer it as **DOWNLOAD MP4** beside the PNG; on mobile,
 `src/lib/card/draw.ts` · `src/lib/card/foil.ts` (new)
 
 `builder.ts`/`draw.ts` were originally shared with John (rarity tiers); that item
-moved here (see item 6), so they're fully yours now — no handoff, no rebase.
+moved here (see item 7), so they're fully yours now — no handoff, no rebase.
 
 **Never touch:** `src/app/layout.tsx`, `src/app/globals.css`,
 `src/components/Marquee.tsx`, `src/components/Backdrop.tsx` — all John's.

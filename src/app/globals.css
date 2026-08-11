@@ -46,9 +46,11 @@
   --color-night-deep: var(--night-deep);
   --color-night-uv: var(--night-uv);
 
-  --font-display: var(--font-bodoni);
-  --font-mono: var(--font-roboto-mono);
-  --font-sans: var(--font-roboto-mono);
+  /* page chrome only — --font-bodoni / --font-roboto-mono stay bound to the
+     canvas card renderer, which src/lib/card/fonts.ts reads by name */
+  --font-display: var(--font-imbue);
+  --font-mono: var(--font-victor-mono);
+  --font-sans: var(--font-victor-mono);
 }
 
 html {
@@ -58,7 +60,7 @@ html {
 
 body {
   color: var(--foreground);
-  font-family: var(--font-roboto-mono), ui-monospace, monospace;
+  font-family: var(--font-victor-mono), ui-monospace, monospace;
   /* the tilt surface should never rubber-band the page on mobile */
   overscroll-behavior-y: none;
   /* no background here: an opaque body paints in front of any fixed,
@@ -68,9 +70,9 @@ body {
      on their own root element (see /id/[slug]). */
 }
 
-/* Bodoni Moda Black is a didone — it wants to be big, tight and confident. */
+/* Imbue at weight 900 — hhgoa.com's own display face, big and confident. */
 .font-display {
-  font-family: var(--font-bodoni), ui-serif, Georgia, serif;
+  font-family: var(--font-imbue), ui-serif, Georgia, serif;
   font-weight: 900;
   line-height: 0.86;
   letter-spacing: -0.01em;

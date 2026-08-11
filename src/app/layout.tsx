@@ -1,12 +1,19 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
-import { Roboto_Mono } from "next/font/google";
+import { Roboto_Mono, Imbue, Victor_Mono } from "next/font/google";
 import "./globals.css";
 
 /*
  * Bodoni Moda, instanced at wght=900 opsz=6 by scripts (the variable font's
  * display optical sizes thin the hairlines to nothing at this weight). Served
  * locally so the canvas renderer and the browser agree exactly.
+ *
+ * Kept loaded (unused by the Tailwind theme below) purely so the canvas card
+ * renderer keeps resolving --font-bodoni / --font-roboto-mono exactly as
+ * before — src/lib/card/fonts.ts reads those two variable names literally,
+ * and every coordinate in src/lib/card/layout.ts was hand-measured against
+ * these specific faces. Imbue/Victor Mono replace them for the page chrome
+ * only; the card itself is untouched.
  */
 const bodoni = localFont({
   src: "../../public/fonts/BodoniModa-Black.ttf",
@@ -18,6 +25,22 @@ const bodoni = localFont({
 const robotoMono = Roboto_Mono({
   variable: "--font-roboto-mono",
   subsets: ["latin"],
+  display: "swap",
+});
+
+/* hhgoa.com's real brand faces (recovered from their compiled CSS), used for
+   everything the browser renders directly — headings, labels, the ticker. */
+const imbue = Imbue({
+  variable: "--font-imbue",
+  subsets: ["latin"],
+  weight: "900",
+  display: "swap",
+});
+
+const victorMono = Victor_Mono({
+  variable: "--font-victor-mono",
+  subsets: ["latin"],
+  weight: ["500", "700"],
   display: "swap",
 });
 
@@ -61,7 +84,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${bodoni.variable} ${robotoMono.variable} h-full antialiased`}
+      className={`${bodoni.variable} ${robotoMono.variable} ${imbue.variable} ${victorMono.variable} h-full antialiased`}
     >
       {/* The card can't draw its first frame until all four of these load —
           hinting here lets the browser start fetching before hydration even

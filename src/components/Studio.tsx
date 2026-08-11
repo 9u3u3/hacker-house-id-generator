@@ -8,8 +8,11 @@ import { loadCardAssets } from "@/lib/card/assets";
 import { renderShareBlob } from "@/lib/card/scene";
 import { PHOTO_ASPECT } from "@/lib/card/layout";
 import { computeCrop, loadPhoto, type LoadedPhoto } from "@/lib/photo";
+import { shareToX as publishToX } from "@/lib/share";
 import { useTilt } from "@/hooks/useTilt";
+import { Backdrop } from "./Backdrop";
 import { Diagnostics } from "./Diagnostics";
+import { Marquee } from "./Marquee";
 import { TidePass } from "./TidePass";
 
 type Status = { kind: "idle" | "working" | "error"; message?: string };
@@ -85,48 +88,11 @@ export function Studio() {
     }
   }, [pass, photoSource]);
 
-  /**
-   * Publish, then hand X a link whose OG image is the rendered card.
-   *
-   * The web intent can't attach an image directly, so the link preview is what
-   * makes the tweet show the graphic — which is also why the pass has to be
-   * uploaded rather than kept local. The photo only leaves the device here, on
-   * an explicit share; download stays entirely offline.
-   */
   const shareToX = useCallback(async () => {
     setStatus({ kind: "working", message: "publishing" });
     try {
-      const fonts = resolveFonts();
-      const [assets] = await Promise.all([loadCardAssets(), ensureFontsLoaded(fonts)]);
-      const blob = await renderShareBlob({ pass, photo: photoSource, fonts, assets });
-
-      const form = new FormData();
-      form.append("image", blob, "pass.png");
-      form.append(
-        "meta",
-        JSON.stringify({
-          name: pass.name,
-          role: pass.role,
-          stack: pass.stack,
-          handle: pass.handle,
-          builderClass: pass.builderClass,
-          serial: pass.serial,
-          seat: pass.seat,
-          salt,
-        }),
-      );
-
-      const res = await fetch("/api/publish", { method: "POST", body: form });
-      if (!res.ok) throw new Error(`publish failed: ${res.status}`);
-      const { path } = (await res.json()) as { path: string };
-
-      const url = `${window.location.origin}${path}`;
+      const { url } = await publishToX({ pass, photo: photoSource, salt });
       setShareUrl(url);
-
-      const text = `I'm a ${pass.builderClass} at Hacker House Goa 2026 — pass ${pass.serial}. Tilt the card, it doesn't show you the same thing twice.\n\n#FrameInGoa`;
-      const intent = `https://x.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
-
-      window.open(intent, "_blank", "noopener,noreferrer");
       setStatus({ kind: "idle" });
     } catch (err) {
       console.error(err);
@@ -138,6 +104,7 @@ export function Studio() {
 
   return (
     <div className="min-h-dvh bg-green text-paper">
+      <Backdrop />
       <Marquee />
 
       <main className="mx-auto grid w-full max-w-6xl gap-10 px-5 pb-24 pt-10 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)] lg:gap-16 lg:pt-16">
@@ -296,18 +263,6 @@ export function Studio() {
 }
 
 /* ------------------------------------------------------------------ */
-
-function Marquee() {
-  const line = "LESS NOISE. MORE SIGNAL. · #FrameInGoa · 247 SEATS · ";
-  return (
-    <div className="overflow-hidden border-b border-paper/15 bg-green-ink/40 py-2">
-      <div className="marquee font-mono text-[11px] tracking-[0.3em] text-yellow/80">
-        <span>{line.repeat(6)}</span>
-        <span aria-hidden>{line.repeat(6)}</span>
-      </div>
-    </div>
-  );
-}
 
 function Field(props: {
   label: string;

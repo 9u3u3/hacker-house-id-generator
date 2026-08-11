@@ -4,7 +4,9 @@ Track: the photo → render → publish → share pipeline.
 Master list with full research: [`listOfFixes.md`](./listOfFixes.md)
 
 Item 1 is **mandatory** and lands first. Item 5 (CREW mode) is the headline
-feature of the whole branch. Item 6 is stretch — only if 1–5 are green.
+feature of the whole branch. Item 6 (rarity tiers) was originally John's — it's
+here now because it shares CREW's files, see the note there. Item 7 is stretch —
+only if 1–6 are green.
 
 ---
 
@@ -139,11 +141,25 @@ sanctions. So this is a **combined team ID card**, several people on one pass �
   record, so the crew image shares through the existing path — `PassRecord`
   (`src/lib/store.ts:18`) just needs an optional members array.
 
-**Coordination:** `builder.ts` and `draw.ts` are the only files John also touches
-(he's adding rarity tiers). **Your CREW changes land first and he rebases on top**,
-because CREW restructures `mint()`'s shape. Tell him when they're in.
+**On rarity tiers (item 6, next):** that item was originally John's, blocked on
+this exact restructure of `mint()`. Rather than have him wait idle and rebase on
+top afterward, it's moved to this list — you now own `builder.ts`/`draw.ts`
+outright, no handoff needed. Do CREW first; rarity builds on the shape it leaves
+`mint()` in.
 
-## 6. A1 — Animated MP4/GIF export — **stretch only**
+## 6. A3 — Rarity tiers on the builder class
+
+`mint()` already derives a stable class from a hash (`src/lib/builder.ts:175`) —
+after CREW, check that hash derivation still applies cleanly per-member. Bucket
+the draw into COMMON / RARE / MYTHIC by hash range, print the tier on the card,
+and give rare pulls a foil/holo treatment. People reroll for a good one and post
+the good one — which is exactly what the Radar ranks.
+
+Keep the foil treatment in a new `src/lib/card/foil.ts` and touch `draw.ts` at a
+single call site, same as any other draw-path addition — no coordination needed
+now that both files are yours.
+
+## 7. A1 — Animated MP4/GIF export — **stretch only**
 
 Highest payoff on the whole list, and the reason it's stretch is an honest cost.
 
@@ -173,10 +189,12 @@ Offer it as **DOWNLOAD MP4** beside the PNG; on mobile,
 `src/lib/share.ts` (new) · `src/components/Studio.tsx` · `src/lib/photo.ts` ·
 `src/lib/store.ts` · `src/app/api/publish/route.ts` ·
 `src/app/api/blob/[key]/route.ts` · `src/app/id/[slug]/page.tsx` ·
-`src/lib/card/layout.ts` · `src/lib/card/scene.ts`
+`src/lib/card/layout.ts` · `src/lib/card/scene.ts` · `src/lib/builder.ts` ·
+`src/lib/card/draw.ts` · `src/lib/card/foil.ts` (new)
 
-**Shared with John:** `src/lib/builder.ts`, `src/lib/card/draw.ts` — yours lands
-first, see item 5.
+`builder.ts`/`draw.ts` were originally shared with John (rarity tiers); that item
+moved here (see item 6), so they're fully yours now — no handoff, no rebase.
+
 **Never touch:** `src/app/layout.tsx`, `src/app/globals.css`,
 `src/components/Marquee.tsx`, `src/components/Backdrop.tsx` — all John's.
 

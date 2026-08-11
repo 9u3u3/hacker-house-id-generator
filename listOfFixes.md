@@ -234,11 +234,15 @@ Dead capability. Add pinch/drag on the photo window plus a zoom slider, auto-cro
 still the default. The brief says "don't assume users will crop first"; auto-crop
 handles that, but when it guesses wrong the user is currently stuck with it.
 
-### A3. Rarity tiers on the builder class → **John** ★ drives the reroll → post loop
+### A3. Rarity tiers on the builder class → **Sai** ★ drives the reroll → post loop
 `mint()` already derives a stable class from a hash (`src/lib/builder.ts:175`).
 Bucket the draw into COMMON / RARE / MYTHIC by hash range, print the tier on the
 card, and give rare pulls a foil/holo treatment. People reroll for a good one and
 post the good one — precisely the metric being ranked.
+
+Originally John's — reassigned to Sai since it touches the exact same files
+(`builder.ts`, `draw.ts`) as CREW mode, and CREW restructures `mint()`'s shape
+first regardless. Doing both on one branch avoids a cross-branch handoff.
 
 ### A7. Downscale guard for huge photos → **Sai**
 A 48MP HEIC decoded at full size on a mid-range Android will OOM the tab —
@@ -299,15 +303,14 @@ the point, since it is otherwise the collision hotspot for the ticker, the share
 flow, and CREW mode all at once. It lands as the first commit on branch `john`;
 Sai branches from that commit rather than from `main`.
 
-### John — Identity & Surface (~11h)
+### John — Identity & Surface (~9.5h) — done, all items shipped
 | # | Item | Est |
 |---|---|---|
 | 1 | **V1 backdrop** (mandatory) | ~4h |
 | 2 | **V2 ticker** (mandatory) | ~1.5h |
 | 3 | F2 homepage OG image | ~1h |
 | 4 | A9 first-paint speed | ~1h |
-| 5 | A3 rarity tiers + foil | ~1.5h |
-| 6 | F3 official fonts — **last**, it perturbs card metrics | ~2h |
+| 5 | F3 official fonts — **last**, it perturbs card metrics | ~2h |
 
 **Owns:** `src/components/Backdrop.tsx` (new), `src/components/Marquee.tsx` (new),
 `public/scene/*`, `public/fonts/*`, `src/app/globals.css`, `src/app/layout.tsx`,
@@ -316,7 +319,7 @@ Sai branches from that commit rather than from `main`.
 `layout.tsx` is John's alone — fonts, OG metadata and asset preload all live
 there, so one owner avoids three-way conflicts in one file.
 
-### Sai — Flow & Reach (~12.5h)
+### Sai — Flow & Reach (~14h)
 | # | Item | Est |
 |---|---|---|
 | 1 | **V3 share to X**, incl. the blob-token check (mandatory) | ~3h |
@@ -324,22 +327,23 @@ there, so one owner avoids three-way conflicts in one file.
 | 3 | A8 publish guards | ~1h |
 | 4 | A2 crop nudge | ~1.5h |
 | 5 | F1 CREW mode — the headline feature | ~6h |
-| 6 | A1 animated export — **stretch only** | ~4h |
+| 6 | A3 rarity tiers + foil — moved from John's list, see below | ~1.5h |
+| 7 | A1 animated export — **stretch only** | ~4h |
 
 **Owns:** `src/lib/share.ts` (new), `src/components/Studio.tsx`,
 `src/lib/photo.ts`, `src/lib/store.ts`, `src/app/api/publish/route.ts`,
 `src/app/api/blob/[key]/route.ts`, `src/app/id/[slug]/page.tsx`,
-`src/lib/card/layout.ts`, `src/lib/card/scene.ts`.
+`src/lib/card/layout.ts`, `src/lib/card/scene.ts`, `src/lib/builder.ts`,
+`src/lib/card/draw.ts`, `src/lib/card/foil.ts` (new).
 
-### The two shared files
-`src/lib/builder.ts` and `src/lib/card/draw.ts` are the only files both tracks
-touch — Sai for CREW (per-member minting, crew draw path), John for rarity (tier
-derivation, foil treatment).
-
-**Rule: Sai's CREW changes land first; John rebases rarity on top.** CREW
-restructures `mint()`'s shape, so the other order means John writes the rarity code
-twice. To shrink the overlap further, John puts the foil treatment in a new
-`src/lib/card/foil.ts` and touches `draw.ts` at a single call site.
+**On A3, and why it moved:** `builder.ts`/`draw.ts` were originally going to be
+shared — Sai for CREW's per-member minting and crew draw path, John for rarity's
+tier derivation and foil treatment, with John rebasing on top once CREW landed.
+That handoff added a wait-then-rebase step for no real benefit, since both
+pieces of work sit in the same two files regardless. Simpler to give Sai full
+ownership of both files and fold rarity into his list right after CREW — no
+cross-branch coordination needed at all now. Do CREW first; rarity builds on
+the shape it leaves `mint()` in.
 
 ---
 

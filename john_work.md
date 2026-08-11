@@ -131,20 +131,13 @@ cache — good, but there's no `<link rel="preload">`, so the browser doesn't st
 them until the module runs. Preload in the document head and decode off the main
 thread. "Seconds from upload to shareable output" is an explicit judging criterion.
 
-## 5. A3 — Rarity tiers on the builder class
+> **A3 (rarity tiers) has moved to `sai_work.md`.** It was blocked here on
+> Sai's CREW-mode restructure of `mint()` — same files he was already
+> touching — so rather than John waiting idle and then rebasing on top, Sai
+> now owns it outright as the item right after CREW lands. Nothing left on
+> this list depends on Sai's work, so this track has no more blocked items.
 
-`mint()` already derives a stable class from a hash (`src/lib/builder.ts:175`).
-Bucket the draw into COMMON / RARE / MYTHIC by hash range, print the tier on the
-card, and give rare pulls a foil/holo treatment. People reroll for a good one and
-post the good one — which is exactly what the Radar ranks.
-
-**Coordination:** `builder.ts` and `draw.ts` are the only files Sai also touches
-(CREW needs per-member minting). **Sai's CREW lands first; rebase this on top** —
-CREW restructures `mint()`'s shape, so the other order means writing this twice.
-Keep the foil treatment in a new `src/lib/card/foil.ts` and touch `draw.ts` at a
-single call site.
-
-## 6. F3 — Official fonts — **do this last**
+## 5. F3 — Official fonts — **do this last**
 
 Imbue + Victor Mono replace Bodoni Moda + Roboto Mono in `layout.tsx` and
 `src/lib/card/fonts.ts`. Self-host both, as the current setup already does, so the
@@ -162,13 +155,14 @@ leave the card faces alone — it's the easiest item here to partially revert.
 
 `src/components/Backdrop.tsx` (new) · `src/components/Marquee.tsx` (new) ·
 `public/scene/*` · `public/fonts/*` · `src/app/globals.css` · `src/app/layout.tsx` ·
-`src/lib/card/fonts.ts` · `src/lib/card/assets.ts` · `src/lib/card/foil.ts` (new)
+`src/lib/card/fonts.ts` · `src/lib/card/assets.ts`
 
 `layout.tsx` is yours alone — fonts, OG metadata and asset preload all live there,
 so one owner avoids three-way conflicts in a single file.
 
-**Shared with Sai:** `src/lib/builder.ts`, `src/lib/card/draw.ts` — see item 5.
-**Never touch:** `src/components/Studio.tsx` after the extraction commit.
+**Never touch:** `src/components/Studio.tsx` after the extraction commit,
+`src/lib/builder.ts`, `src/lib/card/draw.ts` — all Sai's now that A3 moved to
+his list.
 
 ---
 

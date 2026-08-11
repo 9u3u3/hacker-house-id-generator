@@ -63,6 +63,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${bodoni.variable} ${robotoMono.variable} h-full antialiased`}
     >
+      {/* The card can't draw its first frame until all four of these load —
+          hinting here lets the browser start fetching before hydration even
+          runs, rather than waiting on the useEffect in Studio.tsx. React 19
+          hoists <link> tags into <head> regardless of where they're
+          rendered in the tree. */}
+      <link rel="preload" as="image" href="/plates/day.webp" type="image/webp" />
+      <link rel="preload" as="image" href="/plates/sunrise.webp" type="image/webp" />
+      <link rel="preload" as="image" href="/plates/night.webp" type="image/webp" />
+      <link rel="preload" as="image" href="/plates/goa-badge.png" type="image/png" />
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

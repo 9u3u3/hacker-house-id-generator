@@ -1,14 +1,33 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { MotionStatus } from "@/hooks/useTilt";
 import { mint } from "@/lib/builder";
 import { resolveFonts, ensureFontsLoaded } from "@/lib/card/fonts";
 import { loadCardAssets } from "@/lib/card/assets";
-import { renderShareBlob } from "@/lib/card/scene";
 import { PHOTO_ASPECT } from "@/lib/card/layout";
 import { computeCrop, loadPhoto, type LoadedPhoto } from "@/lib/photo";
-import { shareToX as publishToX } from "@/lib/share";
+import {
+  canShareFile,
+  captionFor,
+  describePublishError,
+  intentUrl,
+  metaFor,
+  openBlankTab,
+  pngFile,
+  publishRender,
+  renderPass,
+  sendTabTo,
+  shareFileNatively,
+} from "@/lib/share";
+import type { PhotoSource } from "@/lib/card/draw";
 import { useTilt } from "@/hooks/useTilt";
 import { Backdrop } from "./Backdrop";
 import { Diagnostics } from "./Diagnostics";
@@ -16,6 +35,10 @@ import { Marquee } from "./Marquee";
 import { TidePass } from "./TidePass";
 
 type Status = { kind: "idle" | "working" | "error"; message?: string };
+
+/** `origin` never changes for the life of the document, so there's nothing to
+    subscribe to — this exists only to satisfy the store contract. */
+const subscribeNever = () => () => {};
 
 export function Studio() {
   const [name, setName] = useState("");
@@ -29,6 +52,16 @@ export function Studio() {
   const [dragOver, setDragOver] = useState(false);
   const [manualTilt, setManualTilt] = useState(0);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [canShareImage, setCanShareImage] = useState(false);
+  const [copied, setCopied] = useState<"link" | "caption" | null>(null);
+
+  /* window.location isn't there during the server render, and reading it into
+     state from an effect would cascade a second render on every mount */
+  const origin = useSyncExternalStore(
+    subscribeNever,
+    () => window.location.origin,
+    () => "",
+  );
 
   const tilt = useTilt();
 
@@ -65,12 +98,58 @@ export function Studio() {
     }
   }, []);
 
+  const ready = name.trim().length > 0;
+  const caption = useMemo(() => captionFor(pass), [pass]);
+
+  /*
+   * The last full-res render, kept keyed on exactly what produced it.
+   *
+   * Two things need it. `navigator.share` is gated on user activation just like
+   * `window.open`, so rendering inside the click handler and then sharing loses
+   * the gesture — the blob has to exist *before* the tap. And having it around
+   * makes DOWNLOAD and SHARE instant instead of re-rendering 2400x1350 each
+   * time. Nothing is uploaded here; this is the same local render as always.
+   */
+  const prepared = useRef<{
+    pass: typeof pass;
+    photo: PhotoSource | null;
+    blob: Blob;
+  } | null>(null);
+
+  const preparedBlob = useCallback(
+    () =>
+      prepared.current &&
+      prepared.current.pass === pass &&
+      prepared.current.photo === photoSource
+        ? prepared.current.blob
+        : null,
+    [pass, photoSource],
+  );
+
+  useEffect(() => {
+    if (!ready) return;
+    let cancelled = false;
+    /* debounced: the pass re-mints on every keystroke */
+    const timer = setTimeout(() => {
+      renderPass({ pass, photo: photoSource })
+        .then((blob) => {
+          if (cancelled) return;
+          prepared.current = { pass, photo: photoSource, blob };
+          setCanShareImage(canShareFile(pngFile(blob, pass.serial)));
+        })
+        .catch((err) => console.error("share pre-render failed", err));
+    }, 700);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [ready, pass, photoSource]);
+
   const download = useCallback(async () => {
     setStatus({ kind: "working", message: "rendering" });
     try {
-      const fonts = resolveFonts();
-      const [assets] = await Promise.all([loadCardAssets(), ensureFontsLoaded(fonts)]);
-      const blob = await renderShareBlob({ pass, photo: photoSource, fonts, assets });
+      const blob = preparedBlob() ?? (await renderPass({ pass, photo: photoSource }));
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -86,21 +165,73 @@ export function Studio() {
       console.error(err);
       setStatus({ kind: "error", message: "render failed — try again" });
     }
-  }, [pass, photoSource]);
+  }, [pass, photoSource, preparedBlob]);
 
-  const shareToX = useCallback(async () => {
+  /**
+   * Share to X.
+   *
+   * Deliberately **not** an async function. The tab is claimed on the first
+   * line, while the click's user activation is still live; everything slow
+   * happens afterwards and just redirects the tab it already holds. Doing the
+   * work first and opening at the end is what made this button silently do
+   * nothing on Safari and Chrome-Android.
+   */
+  const shareToX = useCallback(() => {
+    const tab = openBlankTab();
+    const home = window.location.origin;
     setStatus({ kind: "working", message: "publishing" });
-    try {
-      const { url } = await publishToX({ pass, photo: photoSource, salt });
-      setShareUrl(url);
-      setStatus({ kind: "idle" });
-    } catch (err) {
-      console.error(err);
-      setStatus({ kind: "error", message: "couldn't publish — try again" });
-    }
-  }, [pass, photoSource, salt]);
 
-  const ready = name.trim().length > 0;
+    void (async () => {
+      try {
+        const blob = preparedBlob() ?? (await renderPass({ pass, photo: photoSource }));
+        const { path } = await publishRender(blob, metaFor(pass, salt));
+        const url = `${home}${path}`;
+        setShareUrl(url);
+        sendTabTo(tab, intentUrl(caption, url));
+        setStatus({ kind: "idle" });
+      } catch (err) {
+        console.error(err);
+        /* a dead button is the worst outcome — post the caption pointing at the
+           generator rather than nothing at all, and say what actually broke */
+        sendTabTo(tab, intentUrl(caption, home));
+        setStatus({ kind: "error", message: describePublishError(err) });
+      }
+    })();
+  }, [pass, photoSource, salt, caption, preparedBlob]);
+
+  /**
+   * Attach the real PNG to the post instead of relying on a link preview.
+   *
+   * Phones only, and only from the pre-rendered blob — `navigator.share` spends
+   * the same user activation `window.open` does, so it cannot be awaited into.
+   */
+  const shareImage = useCallback(() => {
+    const blob = preparedBlob();
+    if (!blob) {
+      setStatus({ kind: "working", message: "still rendering — try again in a second" });
+      return;
+    }
+    shareFileNatively({
+      file: pngFile(blob, pass.serial),
+      caption,
+      url: window.location.origin,
+    })
+      .then(() => setStatus({ kind: "idle" }))
+      .catch((err) => {
+        console.error(err);
+        setStatus({ kind: "error", message: "the share sheet wouldn't open" });
+      });
+  }, [pass.serial, caption, preparedBlob]);
+
+  const copy = useCallback(async (what: "link" | "caption", text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(what);
+      setTimeout(() => setCopied(null), 1600);
+    } catch {
+      setStatus({ kind: "error", message: "clipboard blocked — select the link by hand" });
+    }
+  }, []);
 
   return (
     <div className="min-h-dvh text-paper">
@@ -226,21 +357,32 @@ export function Studio() {
 
             <button
               type="button"
-              onClick={() => void shareToX()}
+              onClick={shareToX}
               disabled={!ready || status.kind === "working"}
               className="rounded-full border border-paper/40 px-7 py-3.5 font-mono text-sm font-bold tracking-widest text-paper transition hover:border-paper hover:bg-paper hover:text-green-ink disabled:cursor-not-allowed disabled:opacity-40"
             >
               SHARE TO X
             </button>
+
+            {ready && canShareImage && (
+              <button
+                type="button"
+                onClick={shareImage}
+                className="rounded-full border border-pink/60 px-7 py-3.5 font-mono text-sm font-bold tracking-widest text-pink transition hover:bg-pink hover:text-paper"
+              >
+                SHARE IMAGE
+              </button>
+            )}
           </div>
 
-          {shareUrl && (
-            <p className="font-mono text-xs break-all text-paper/60">
-              live link:{" "}
-              <a href={shareUrl} className="text-yellow underline">
-                {shareUrl}
-              </a>
-            </p>
+          {ready && origin && (
+            <ShareFallback
+              intent={intentUrl(caption, shareUrl ?? origin)}
+              link={shareUrl}
+              caption={caption}
+              copied={copied}
+              onCopy={copy}
+            />
           )}
 
           {status.kind === "error" && (
@@ -263,6 +405,73 @@ export function Studio() {
 }
 
 /* ------------------------------------------------------------------ */
+
+/**
+ * The manual route, always on screen once there's a name to share.
+ *
+ * A popup blocker can still eat the tab even when `window.open` fires on the
+ * gesture — an extension, a locked-down enterprise profile, an in-app webview.
+ * This block means the flow is always completable by hand: a real anchor the
+ * browser treats as navigation rather than a popup, plus the two strings needed
+ * to post it from anywhere.
+ *
+ * It renders *before* publishing too, pointed at the generator itself, so the
+ * "post a how-to link" half of the task works even if publish is down.
+ */
+function ShareFallback(props: {
+  intent: string;
+  link: string | null;
+  caption: string;
+  copied: "link" | "caption" | null;
+  onCopy: (what: "link" | "caption", text: string) => void;
+}) {
+  const chip =
+    "rounded-full border border-paper/25 px-4 py-2 font-mono text-[11px] tracking-widest text-paper/80 transition hover:border-paper hover:text-paper";
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-paper/15 bg-green-deep/50 p-4">
+      <p className="font-mono text-[10px] tracking-[0.3em] text-paper/50">
+        {props.link ? "PUBLISHED — POST IT" : "IF THE POPUP GETS BLOCKED"}
+      </p>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <a
+          href={props.intent}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-full bg-paper px-4 py-2 font-mono text-[11px] font-bold tracking-widest text-green-ink transition hover:brightness-110"
+        >
+          OPEN X COMPOSER ↗
+        </a>
+
+        <button
+          type="button"
+          onClick={() => props.onCopy("link", props.link ?? props.intent)}
+          className={chip}
+        >
+          {props.copied === "link" ? "COPIED ✓" : "COPY LINK"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => props.onCopy("caption", props.caption)}
+          className={chip}
+        >
+          {props.copied === "caption" ? "COPIED ✓" : "COPY CAPTION"}
+        </button>
+      </div>
+
+      {props.link && (
+        <p className="font-mono text-xs break-all text-paper/60">
+          live link:{" "}
+          <a href={props.link} className="text-yellow underline">
+            {props.link}
+          </a>
+        </p>
+      )}
+    </div>
+  );
+}
 
 function Field(props: {
   label: string;

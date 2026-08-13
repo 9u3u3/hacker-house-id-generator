@@ -131,6 +131,9 @@ export function metaForCrew(crew: MintedCrew, salt: number): Record<string, unkn
     team: crew.team,
     members: crew.members.map((m) => ({
       name: m.name,
+      role: m.role,
+      stack: m.stack,
+      handle: m.handle,
       builderClass: m.builderClass,
       tier: m.tier,
     })),

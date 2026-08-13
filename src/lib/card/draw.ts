@@ -1,4 +1,4 @@
-import type { MintedCrew, MintedPass, Tier } from "@/lib/builder";
+import type { MintedCrew, MintedPass } from "@/lib/builder";
 import type { CardAssets } from "./assets";
 import type { CrewPlates } from "./crewAssets";
 import {
@@ -615,7 +615,7 @@ function drawCrewMember(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
-  member: { name: string; builderClass: string; tier: Tier },
+  member: MintedPass,
   photo: PhotoSource | null,
   fonts: Fonts,
 ) {
@@ -685,6 +685,17 @@ function drawCrewMember(
   const name = member.name.toUpperCase();
   fitMono(ctx, name, fonts.mono, 700, 21, 1.5, w - 20, 12);
   tracked(ctx, name, cx, capTop + CREW.caption.nameOffset, 1.5, "center");
+
+  /* ROLE · STACK, the same pair the solo card prints in its data row — the crew
+     member typed them, so the crew card prints them. One line, shrunk to fit:
+     a stack list wrapping under three tiles at once turns the bottom of the
+     card into a paragraph. */
+  const meta = [member.role, member.stack].filter(Boolean).join(" · ").toUpperCase();
+  if (meta) {
+    ctx.fillStyle = CREW_INK.soft;
+    fitMono(ctx, meta, fonts.mono, 500, 13, 1.2, w - 20, 9);
+    tracked(ctx, meta, cx, capTop + CREW.caption.metaOffset, 1.2, "center");
+  }
 
   /* the class runs long — two lines beats shrinking it into illegibility */
   ctx.fillStyle = CREW_INK.accent;

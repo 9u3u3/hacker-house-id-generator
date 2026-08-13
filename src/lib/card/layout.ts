@@ -182,7 +182,7 @@ export const CREW = {
    * rather than hung from the top — there is no printed footer of our own to
    * close the composition now, so the illustration has to.
    */
-  nameplate: { x: 358, y: 232, w: 820, h: 114, nameMaxWidth: 600, nameCap: 52 },
+  nameplate: { x: 358, y: 223, w: 820, h: 114, nameMaxWidth: 600, nameCap: 52 },
   badge: { w: 96, h: 66, gap: 26 },
 
   /**
@@ -190,9 +190,17 @@ export const CREW = {
    * the right-hand icon column at x 1370, and so the row plus its caption band
    * still lands above the printed footer at y 935.
    */
-  window: { y: 376, h: 366, gap: 46, radius: 14, pad: 13 },
-  /** name + builder class, printed on the mount under the photo */
-  caption: { h: 88, nameOffset: 30, classOffset: 52, classLeading: 18 },
+  window: { y: 367, h: 366, gap: 46, radius: 14, pad: 13 },
+  /**
+   * Name, then role · stack, then builder class — printed on the mount under
+   * the photo.
+   *
+   * The band grew by 18px to seat the meta line, and the nameplate and tile row
+   * both moved up 9 to keep the pair centred in the free band as one group,
+   * which is how they were placed to begin with. The bottom of the mount lands
+   * at 867, still clear of the printed footer the art puts at 935.
+   */
+  caption: { h: 106, nameOffset: 30, metaOffset: 52, classOffset: 74, classLeading: 18 },
 
   /**
    * The blacklight line, on the night printing only — the payoff for tilting,

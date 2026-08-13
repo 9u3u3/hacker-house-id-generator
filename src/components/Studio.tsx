@@ -13,7 +13,12 @@ import { CREW_MAX, CREW_MIN, mint, mintCrew, type Tier } from "@/lib/builder";
 import { resolveFonts, ensureFontsLoaded } from "@/lib/card/fonts";
 import { loadCardAssets } from "@/lib/card/assets";
 import { PHOTO_ASPECT } from "@/lib/card/layout";
-import { computeCrop, loadPhoto, type LoadedPhoto } from "@/lib/photo";
+import {
+  computeCrop,
+  loadPhoto,
+  type Framing,
+  type LoadedPhoto,
+} from "@/lib/photo";
 import {
   canShareFile,
   captionFor,
@@ -68,10 +73,23 @@ const AUTO_CROP: Adjust = { zoom: 1, offsetX: 0, offsetY: 0 };
  */
 type Mode = "solo" | "crew";
 
+/**
+ * A crew member is a solo pass with a photo attached.
+ *
+ * The same four fields, deliberately. The brief asks Format B for "name,
+ * stack/role, a generated builder title", and a combined frame is still Format
+ * B — three of them. Taking only the name here would have meant the crew card
+ * printed a builder class derived from a name alone, so two people called Sai
+ * would mint the same title, and the STACK the brief asks for appeared nowhere
+ * on the crew pass at all.
+ */
 type Member = {
   /** stable across re-renders so React keys survive a photo swap */
   id: number;
   name: string;
+  role: string;
+  stack: string;
+  handle: string;
   photo: LoadedPhoto | null;
   adjust: Adjust;
 };
@@ -80,6 +98,9 @@ let nextMemberId = 1;
 const blankMember = (): Member => ({
   id: nextMemberId++,
   name: "",
+  role: "",
+  stack: "",
+  handle: "",
   photo: null,
   adjust: AUTO_CROP,
 });
@@ -159,9 +180,9 @@ export function Studio() {
         team,
         members: members.map((m) => ({
           name: m.name,
-          role: "",
-          stack: "",
-          handle: "",
+          role: m.role,
+          stack: m.stack,
+          handle: m.handle,
           salt,
         })),
         salt,
@@ -232,10 +253,13 @@ export function Studio() {
     setMembers((list) =>
       list[0].name || list[0].photo
         ? list
-        : [{ ...list[0], name, photo, adjust }, ...list.slice(1)],
+        : [
+            { ...list[0], name, role, stack, handle, photo, adjust },
+            ...list.slice(1),
+          ],
     );
     setMode("crew");
-  }, [name, photo, adjust]);
+  }, [name, role, stack, handle, photo, adjust]);
 
   const ready = isCrew ? crewReady : name.trim().length > 0;
   const serial = isCrew ? crew.serial : pass.serial;
@@ -575,7 +599,7 @@ export function Studio() {
             </h1>
             <p className="mt-4 max-w-md font-mono text-sm leading-relaxed text-paper/70">
               {isCrew
-                ? "Two or three of you, one combined frame. Same generator, same builder classes — one card you can all post."
+                ? "Two or three of you, one combined frame. Same fields, same generator — everyone mints their own builder class, on one card you can all post."
                 : "Drop a photo, take your seat. Then tilt the card — it doesn't show you the same thing twice."}
             </p>
           </header>
@@ -590,7 +614,7 @@ export function Studio() {
               crops={crewPhotos}
               classes={crew.members.map((m) => m.builderClass)}
               tiers={crew.members.map((m) => m.tier)}
-              onName={(id, v) => patchMember(id, { name: v })}
+              onField={patchMember}
               onFile={handleMemberFile}
               onAdjust={(id, next) => patchMember(id, { adjust: next })}
               onAdd={() => setMembers((l) => [...l, blankMember()])}
@@ -832,15 +856,18 @@ function ModeToggle(props: {
 }
 
 /**
- * The team roster: 2–3 people, a photo and a name each.
+ * The team roster: 2–3 people, a photo and the solo card's own fields each.
  *
- * Name only, per member, rather than the solo card's four fields. The builder
- * class is seeded from the name either way, so each member still mints a
- * distinct one — and asking three people for a role, a stack and a handle is
- * how a combined frame stops being something anyone finishes.
+ * This used to take a name and nothing else, on the theory that asking three
+ * people for four fields is how a combined frame stops being something anyone
+ * finishes. That was the wrong trade: the builder class is *generated from what
+ * you type*, so a name-only member had their title drawn from a third of the
+ * entropy, and the stack — which the brief names as an input and the solo card
+ * prints — had nowhere to appear. Role, stack and handle stay optional (mint
+ * fills in BUILDER / FULL STACK), so the fast path is still name-and-photo.
  *
- * Each slot gets the same `PhotoFramer` the solo flow does, since a crew tile is
- * narrower than the solo window and the auto-crop has more chance to be wrong.
+ * Each slot gets the same auto-framing the solo flow does, since a crew tile is
+ * narrower than the solo window and a bad crop has less room to hide.
  */
 function CrewRoster(props: {
   team: string;
@@ -849,7 +876,7 @@ function CrewRoster(props: {
   crops: (PhotoSource | null)[];
   classes: string[];
   tiers: Tier[];
-  onName: (id: number, v: string) => void;
+  onField: (id: number, patch: Partial<Member>) => void;
   onFile: (id: number, f: File | undefined) => void;
   onAdjust: (id: number, next: Adjust) => void;
   onAdd: () => void;
@@ -885,13 +912,39 @@ function CrewRoster(props: {
             )}
           </div>
 
-          <Field
-            label="NAME"
-            value={member.name}
-            onChange={(v) => props.onName(member.id, v)}
-            placeholder="their name"
-            maxLength={22}
-          />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field
+              label="NAME"
+              value={member.name}
+              onChange={(v) => props.onField(member.id, { name: v })}
+              placeholder="their name"
+              maxLength={22}
+            />
+            <Field
+              label="X HANDLE"
+              value={member.handle}
+              onChange={(v) => props.onField(member.id, { handle: v })}
+              placeholder="@them"
+              maxLength={20}
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field
+              label="ROLE"
+              value={member.role}
+              onChange={(v) => props.onField(member.id, { role: v })}
+              placeholder="design engineer"
+              maxLength={22}
+            />
+            <Field
+              label="STACK"
+              value={member.stack}
+              onChange={(v) => props.onField(member.id, { stack: v })}
+              placeholder="typescript · rust"
+              maxLength={28}
+            />
+          </div>
 
           <Dropzone
             hasPhoto={!!member.photo}
@@ -911,7 +964,9 @@ function CrewRoster(props: {
 
           {member.name.trim() && (
             <p className="flex items-center gap-2 font-mono text-xs tracking-widest text-yellow">
-              <span className="truncate">{props.classes[i]}</span>
+              <span className="truncate" data-member-class>
+                {props.classes[i]}
+              </span>
               <TierPip tier={props.tiers[i]} />
             </p>
           )}
@@ -931,14 +986,27 @@ function CrewRoster(props: {
   );
 }
 
+/** What the detector actually found, said plainly. */
+const FRAMING_NOTE: Record<Framing, string> = {
+  face: "FRAMED ON THE FACE",
+  subject: "FRAMED ON THE SUBJECT",
+  centre: "CENTRED",
+};
+
 /**
  * Nudge the auto-crop when it guesses wrong.
+ *
+ * Collapsed by default, and that is the point: the photo is already cropped by
+ * the time this renders, so the panel opens on a *result*, not on a task. The
+ * brief says not to assume users will crop first, which means the flow has to
+ * complete without anyone opening this at all — so it announces what the
+ * detector did and gets out of the way. Three of these expanded in the crew
+ * roster also buried the fields underneath them.
  *
  * `computeCrop` has taken `{ zoom, offsetX, offsetY }` since it was written and
  * nothing ever passed them — the subject-aware crop was the only framing on
  * offer, and when it missed (a group shot, a subject in the corner) the user was
- * stuck with the result. The brief's "don't assume users will crop first" is
- * what auto-crop answers; this is the escape hatch for when it's wrong.
+ * stuck with the result. This is the escape hatch for when it's wrong.
  *
  * The rectangle is dragged directly over a thumbnail of the whole photo rather
  * than over the card, because drag on the card is already the tilt fallback on
@@ -956,13 +1024,14 @@ function PhotoFramer(props: {
   onAdjust: (next: Adjust) => void;
 }) {
   const { photo, crop, adjust, onAdjust } = props;
+  const [open, setOpen] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const drag = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !open) return;
 
     /* the thumbnail only has to be sharp at ~280 CSS px wide */
     const w = 560;
@@ -974,7 +1043,8 @@ function PhotoFramer(props: {
     if (!ctx) return;
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(photo.source, 0, 0, w, h);
-  }, [photo]);
+    /* the canvas only exists while the panel is open, so redraw when it opens */
+  }, [photo, open]);
 
   const pct = (n: number) => `${n * 100}%`;
 
@@ -1001,22 +1071,33 @@ function PhotoFramer(props: {
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-paper/15 bg-green-deep/85 p-4">
-      <div className="flex items-center justify-between">
-        <p className="font-mono text-[10px] tracking-[0.3em] text-paper/50">
-          FRAMING {touched ? "· NUDGED" : "· AUTO"}
+      <div className="flex items-center justify-between gap-3">
+        <p className="min-w-0 truncate font-mono text-[10px] tracking-[0.3em] text-paper/50">
+          {touched ? "FRAMING · NUDGED" : `AUTO-CROPPED · ${FRAMING_NOTE[photo.framing]}`}
         </p>
-        {touched && (
+
+        <div className="flex shrink-0 items-center gap-3">
+          {touched && (
+            <button
+              type="button"
+              onClick={() => onAdjust(AUTO_CROP)}
+              className="font-mono text-[10px] tracking-widest text-yellow underline"
+            >
+              RESET
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => onAdjust(AUTO_CROP)}
-            className="font-mono text-[10px] tracking-widest text-yellow underline"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            className="font-mono text-[10px] tracking-widest text-paper/70 underline transition hover:text-paper"
           >
-            RESET
+            {open ? "DONE" : "ADJUST"}
           </button>
-        )}
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4">
+      <div className={`flex-wrap items-center gap-4 ${open ? "flex" : "hidden"}`}>
         <div
           ref={frameRef}
           onPointerDown={(e) => {
@@ -1211,8 +1292,8 @@ function Dropzone(props: {
         {props.hasPhoto ? "SWAP PHOTO" : "DROP A PHOTO"}
       </p>
       <p className="mt-1 font-mono text-xs text-paper/55">
-        jpg · png · heic from your iPhone. We&apos;ll centre it for you — no
-        cropping needed.
+        jpg · png · heic from your iPhone. Any shape — we find the face and cut
+        the frame ourselves. No cropping needed.
       </p>
     </label>
   );

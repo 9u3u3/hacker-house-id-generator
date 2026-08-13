@@ -127,6 +127,11 @@ export default async function PassPage({
                     {m.builderClass}
                     {m.tier && m.tier !== "COMMON" ? ` · ${m.tier}` : ""}
                   </span>
+                  {(m.role || m.stack) && (
+                    <span className="block font-mono text-[11px] text-paper/60">
+                      {[m.role, m.stack].filter(Boolean).join(" · ")}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>

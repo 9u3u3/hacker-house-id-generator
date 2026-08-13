@@ -29,8 +29,8 @@ On desktop, move the cursor across the card instead of tilting.
 | Requirement | Where it lands |
 |---|---|
 | Photo upload, jpg/png/**HEIC** | Native decode first, wasm decoder lazily for browsers that can't |
-| Handles real photos | EXIF rotation + subject-aware crop, so off-centre faces stay in frame |
-| Name + a couple of fun fields | Name, X handle, **role**, **stack** |
+| Handles real photos | EXIF rotation + auto head-finding crop in **every** browser, so nobody crops first |
+| Name + a couple of fun fields | Name, X handle, **role**, **stack** — per person, in CREW too |
 | Generated title | **Builder class** — deterministic from what you typed, printed on the card |
 | Near-instant generation | Canvas, entirely client-side; no server round-trip to see your card |
 | Real downloadable file | PNG via `toBlob` → `a[download]`, no screenshot, no right-click-save |
@@ -69,8 +69,15 @@ because a treatment every card has is just a filter.
 
 The event's own task brief asks you to *"use that same generator to bring your
 teammates into one combined frame"* — so `SOLO` / `CREW` switches the same
-pipeline to a combined pass for 2–3 people. Each member keeps the builder class
-and tier their own name mints; the crew gets one team name and one serial.
+pipeline to a combined pass for 2–3 people. Each member fills in the same fields
+the solo card takes — **name, X handle, role, stack** — and mints their own
+builder class and tier from them; the crew gets one team name and one serial.
+
+Same inputs on purpose. The builder class is generated *from what you type*, so a
+name-only member drew their title from a third of the entropy, and the stack the
+brief asks for had nowhere to appear on a crew card. Only the name is required —
+role and stack fall back to `BUILDER` / `FULL STACK` — so the fast path is still
+a name and a photo each.
 
 It's landscape and already 16:9, unlike the portrait solo card. The plates print
 a single photo window 333×499, which does not divide between three people
@@ -162,10 +169,33 @@ rotation, which is what stops portrait iPhone shots landing sideways. HEIC tries
 native decode first (Safari can) and lazily pulls in a wasm decoder otherwise, so
 the ~1.5MB only loads for people who actually need it.
 
-For framing: Chrome's native `FaceDetector` when present, otherwise a saliency
-pass that scores edge energy plus skin-likeness on a 128px thumbnail and crops to
-that centroid. A plain centre crop shoves off-centre subjects against the edge —
-the exact case the brief warns about.
+For framing, three tiers on one 160px thumbnail, and **nobody is ever asked to
+crop**:
+
+1. Chrome's native `FaceDetector`, when the browser has it.
+2. Otherwise a portable head finder: segment skin, take the connected regions,
+   and score each on roundness, solidity, texture and height in frame. The skin
+   threshold is chosen *per photo* — sand, teak and warm evening light all pass a
+   fixed skin test, so if the mask covers more than 30% of the frame it tightens
+   by red-to-green ratio until it doesn't, which is what keeps a beach from
+   outvoting the person standing on it. The winning region is cut at the
+   neckline (heads are narrow, shoulders are wide) so the crop centres on a face
+   rather than on a chest.
+3. If nothing scores like a head, the saliency centroid — edge energy plus
+   skin-likeness — and failing that, an upward-biased centre crop.
+
+A detected head then sets both the centre and the zoom: the window pulls back
+until the head is about a third of it, sits ~38% down, and a final guard slides
+the window so the head can't be clipped by the edge of the image.
+
+This matters more than it looks. `FaceDetector` ships in one browser and is off
+by default in most builds of it, so *every iPhone* — the device the brief says
+most people will use — was falling through to the centroid, which centres on the
+middle of the whole subject and framed people at chest height. On a landscape
+photo of a group on sand it could miss the subject entirely.
+
+Framing is announced, not asked for: the panel reads `AUTO-CROPPED · FRAMED ON
+THE FACE` with an `ADJUST` disclosure, collapsed, for the cases it gets wrong.
 
 ### Sharing
 
@@ -240,6 +270,7 @@ going in another shell.
 
 ```bash
 npm run check:mobile                # 15 pixel assertions on Pixel 7 + iPhone 13
+npm run check:framing               # auto-crop vs 8 awkward photos, no browser needed
 bun run scripts/preview.ts          # render layers + share scene to .preview/
 bun run scripts/shoot.ts            # screenshot the studio at five tilt angles
 bun run scripts/flow.ts photo.jpg   # upload → download, checks the PNG decodes
@@ -261,8 +292,8 @@ bun run scripts/badge.ts            # extract the गोवा badge as a separa
 
 ### Why the tests read pixels
 
-`mobile.ts` and `flow.ts` assert on decoded image data, not on the DOM. Both
-exist because of bugs that screenshots couldn't catch:
+`mobile.ts`, `flow.ts` and `framing.ts` assert on decoded image data, not on the
+DOM. They exist because of bugs that screenshots couldn't catch:
 
 - The studio looked correct in every screenshot while the card rendered
   **completely blank** on a real phone — a screenshot of a green card on a green
@@ -276,3 +307,8 @@ exist because of bugs that screenshots couldn't catch:
   the click's user activation had already been spent. Nothing you can see in a
   screenshot, so it asserts the tab starts at `about:blank` and is redirected
   afterwards.
+- The auto-crop is a heuristic, and a heuristic nobody measures drifts.
+  `framing.ts` paints photos with a known head position — corners, panoramas,
+  low light, a face filling the frame, and one with no person in it — then
+  asserts the head survives the crop *and* lands somewhere flattering inside it.
+  A crop that merely contains the subject can still be a bad card.

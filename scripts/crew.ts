@@ -35,12 +35,34 @@ await page.goto(URL_, { waitUntil: "networkidle" });
 const t0 = Date.now();
 await page.getByRole("tab", { name: /CREW/i }).click();
 await page.getByPlaceholder("tide runners").fill("Tide Runners");
-await page.getByPlaceholder("their name").nth(0).fill("Sai Salelkar");
-await page.getByPlaceholder("their name").nth(1).fill("John Fernandes");
 
 /* three people is the interesting case — two tiles centre trivially */
 await page.getByRole("button", { name: /ADD A THIRD BUILDER/i }).click();
-await page.getByPlaceholder("their name").nth(2).fill("Harsh Gaonkar");
+
+/* every member takes the solo card's own fields, so fill them: the long ones
+   are what push the name/meta/class stack under a tile into the footer rule */
+const roster = [
+  ["Sai Salelkar", "@sai", "Design Engineer", "TypeScript · Rust"],
+  ["John Fernandes", "@johnf", "Infrastructure", "Go · Postgres · k8s"],
+  ["Harsh Gaonkar", "@harshg", "ML", "Python"],
+];
+for (const [i, [name, handle, role, stack]] of roster.entries()) {
+  await page.getByPlaceholder("their name").nth(i).fill(name);
+  await page.getByPlaceholder("@them").nth(i).fill(handle);
+  await page.getByPlaceholder("design engineer").nth(i).fill(role);
+  await page.getByPlaceholder("typescript · rust").nth(i).fill(stack);
+}
+
+/* the class is generated per member, from those fields — three different
+   people must not mint the same title */
+const classes = await page
+  .locator("[data-member-class]")
+  .evaluateAll((els) => els.map((el) => el.textContent?.trim() ?? ""));
+if (classes.length !== 3) throw new Error(`expected 3 builder classes, saw ${classes.length}`);
+if (new Set(classes).size !== 3) {
+  throw new Error(`builder classes are not distinct: ${classes.join(" / ")}`);
+}
+console.log(`builder classes: ${classes.join(" · ")}`);
 
 const files = page.locator('input[type="file"]');
 const slots = await files.count();

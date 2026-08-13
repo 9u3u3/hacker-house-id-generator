@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "dev:https": "next dev --experimental-https",
-    "check:mobile": "bun run scripts/mobile.ts"
+    "check:mobile": "bun run scripts/mobile.ts",
+    "check:framing": "node --experimental-strip-types scripts/framing.ts"
   },
   "dependencies": {
     "@vercel/blob": "^2.7.0",

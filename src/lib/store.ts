@@ -19,6 +19,10 @@ export type CrewMemberRecord = {
   name: string;
   builderClass: string;
   tier?: string;
+  /** the fields the member typed — optional, since older records predate them */
+  role?: string;
+  stack?: string;
+  handle?: string;
 };
 
 export type PassRecord = {

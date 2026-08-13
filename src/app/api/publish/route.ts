@@ -142,6 +142,9 @@ export async function POST(req: Request) {
           name: String(m.name ?? "").slice(0, 60),
           builderClass: String(m.builderClass ?? "").slice(0, 60),
           tier: String(m.tier ?? "").slice(0, 12),
+          role: String(m.role ?? "").slice(0, 40),
+          stack: String(m.stack ?? "").slice(0, 80),
+          handle: String(m.handle ?? "").slice(0, 40),
         };
       })
     : undefined;

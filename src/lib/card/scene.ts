@@ -271,13 +271,85 @@ export async function renderShareBlob(opts: {
 }
 
 /**
+ * Where the crew card sits in the share scene.
+ *
+ * The card follows its illustrations, which are 3:2, so it no longer *is* the
+ * 16:9 field the way the old composed layout was — it gets composited into one,
+ * as the solo card does. Sized to leave a visible margin: a 3:2 card scaled to
+ * touch both edges of a 16:9 frame reads as a bad crop rather than as a posted
+ * object.
+ */
+const SCENE_CREW = {
+  h: 612,
+  get w() {
+    return this.h * (CREW.W / CREW.H);
+  },
+  get x() {
+    return (SCENE_W - this.w) / 2;
+  },
+  get y() {
+    return (SCENE_H - this.h) / 2;
+  },
+  radius: 24,
+};
+
+/**
  * The crew pass, exported.
  *
- * No compositing step, unlike the solo card: the crew layout is already 16:9,
- * so what gets posted is the card itself. It lands at the same pixel dimensions
- * as the solo export, which is what lets `/id/[slug]` declare one set of
- * `og:image` width/height for both.
+ * Composited into the same 16:9 field as the solo share image, so both land at
+ * the same pixel dimensions — which is what lets `/id/[slug]` declare one set of
+ * `og:image` width/height for every pass it serves.
  */
+export function drawCrewScene(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  opts: {
+    crew: MintedCrew;
+    photos: (PhotoSource | null)[];
+    fonts: Fonts;
+    assets: CardAssets;
+    plates?: CrewPlates | null;
+  },
+) {
+  ctx.save();
+  ctx.scale(width / SCENE_W, height / SCENE_H);
+
+  /* the same backdrop the solo scene uses, so the two posts read as one set */
+  ctx.fillStyle = GREEN_DEEP;
+  ctx.fillRect(0, 0, SCENE_W, SCENE_H);
+
+  ctx.save();
+  ctx.globalAlpha = 0.28;
+  const wash = opts.plates?.day ?? opts.assets.plates.day;
+  const coverW = SCENE_W * 1.35;
+  const coverH = coverW * (CREW.H / CREW.W);
+  ctx.drawImage(wash, (SCENE_W - coverW) / 2, (SCENE_H - coverH) / 2, coverW, coverH);
+  ctx.restore();
+
+  ctx.fillStyle = "rgba(8,40,29,0.55)";
+  ctx.fillRect(0, 0, SCENE_W, SCENE_H);
+
+  const { x, y, w, h } = SCENE_CREW;
+
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.55)";
+  ctx.shadowBlur = 48;
+  ctx.shadowOffsetY = 18;
+  ctx.fillStyle = "#000";
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, SCENE_CREW.radius);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(x, y);
+  drawCrewCard(ctx, w, h, { ...opts, layer: "day" });
+  ctx.restore();
+
+  ctx.restore();
+}
+
 export async function renderCrewBlob(opts: {
   crew: MintedCrew;
   photos: (PhotoSource | null)[];
@@ -288,13 +360,13 @@ export async function renderCrewBlob(opts: {
 }): Promise<Blob> {
   const scale = opts.scale ?? EXPORT_SCALE;
   const canvas = document.createElement("canvas");
-  canvas.width = CREW.W * scale;
-  canvas.height = CREW.H * scale;
+  canvas.width = SCENE_W * scale;
+  canvas.height = SCENE_H * scale;
 
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("canvas 2d context unavailable");
 
-  drawCrewCard(ctx, canvas.width, canvas.height, opts);
+  drawCrewScene(ctx, canvas.width, canvas.height, opts);
 
   return await toPng(canvas);
 }

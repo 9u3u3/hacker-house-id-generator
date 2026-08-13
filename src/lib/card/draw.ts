@@ -5,6 +5,8 @@ import {
   BADGE,
   CLASS_CHIP,
   CREW,
+  CREW_MOUNT_H,
+  CREW_MOUNT_W,
   CREW_TILE_W,
   INK,
   NAME,
@@ -487,60 +489,35 @@ export function drawCard(
 /* ------------------------------------------------------------------ */
 
 /**
- * The crew pass is the same printed object as the solo card, laid out
- * landscape: cream stock, dashed rules, a stamp, printed photo windows on an
- * illustrated band, and a labelled data row.
+ * The crew pass is the same printed object as the solo card, laid out landscape
+ * on its own three illustrated plates.
  *
- * The first version stacked a headline over three tiles on a full-bleed photo
- * background. It read as a social banner rather than as a document, which is
- * the one thing the solo card never does. Landscape cannot stack the solo
- * card's bands top to bottom, so it splits them instead — an identity stub on
- * the left, the crew on the right, divided by a perforation, the way a
- * boarding pass does.
+ * It follows the solo card's division of labour exactly: **the plate is the
+ * card, and code draws only what changes.** The art prints the border, the
+ * lanyard slot, the RESIDENT kicker, the motto, the HH stamp, the icon column
+ * and the dated footer, so none of those appear here — an earlier version drew
+ * all of them itself, and against art that bakes them in, every one would
+ * double.
+ *
+ * What is left is the crew's own content, and it is drawn on printed mounts
+ * rather than straight onto the illustration. See `CREW.plate` in layout.ts for
+ * why: no single ink survives a background that swings from luma 19 to 217
+ * between printings.
  */
 
-/** Per-printing palette. The card changes stock, not just its lighting. */
-type CrewInk = {
-  paper: string;
-  /** paper edge, a shade darker, so the card has a printed border */
-  edge: string;
-  ink: string;
-  soft: string;
-  accent: string;
-  /** the window mount and the class chip */
-  mount: string;
-  glow: boolean;
-};
-
-const CREW_INK: Record<LayerName, CrewInk> = {
-  day: {
-    paper: "#f4ecd8",
-    edge: "#dcd0b4",
-    ink: "#0d3b2e",
-    soft: "rgba(13,59,46,0.55)",
-    accent: "#e01f68",
-    mount: "#fbf5e6",
-    glow: false,
-  },
-  sunrise: {
-    paper: "#fae1c6",
-    edge: "#e6c3a0",
-    ink: "#5e2a12",
-    soft: "rgba(94,42,18,0.55)",
-    accent: "#d93b18",
-    mount: "#fff1de",
-    glow: false,
-  },
-  /* the solo night plate is holographic pastel, not black — so is this */
-  night: {
-    paper: "#d5c8f2",
-    edge: "#b3a2dd",
-    ink: "#23104a",
-    soft: "rgba(35,16,74,0.55)",
-    accent: "#ff0080",
-    mount: "#efe7ff",
-    glow: true,
-  },
+/**
+ * One palette, used on every printing.
+ *
+ * Deliberately not per-layer. The mounts are opaque, so the type's contrast no
+ * longer depends on the art beneath it, and drawing it identically on all three
+ * layers is what keeps it from swimming while the illustration changes mid-tilt
+ * — the same reason the solo card's data row shares one set of coordinates.
+ */
+const CREW_INK = {
+  ink: INK.green,
+  soft: "rgba(13,59,46,0.62)",
+  accent: INK.pink,
+  gold: INK.gold,
 };
 
 /** Greedy wrap to at most `maxLines`, shedding characters from the last. */
@@ -623,130 +600,45 @@ function initialsOf(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-/** A dashed rule, the way the solo card scores its top strip. */
-function dashedLine(
-  ctx: CanvasRenderingContext2D,
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
-  color: string,
-) {
-  ctx.save();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 2;
-  ctx.setLineDash([7, 7]);
-  ctx.beginPath();
-  ctx.moveTo(x1, y1);
-  ctx.lineTo(x2, y2);
-  ctx.stroke();
-  ctx.restore();
-}
-
 /**
- * Text around a circle, for the stamp.
+ * One member: photo, name and builder class, on a single printed mount.
  *
- * `flip` is what makes the lower half readable. Rotating each glyph by
- * `angle + 90°` is correct along the top of a circle and upside down along the
- * bottom, so the bottom arc rotates the other way and runs its characters in
- * reverse to keep the reading order.
- */
-function arcText(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  cx: number,
-  cy: number,
-  radius: number,
-  startAngle: number,
-  sweep: number,
-  flip = false,
-) {
-  const chars = flip ? [...text].reverse() : [...text];
-  const step = sweep / Math.max(1, chars.length - 1);
-
-  ctx.save();
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  for (const [i, c] of chars.entries()) {
-    const a = startAngle + i * step;
-    ctx.save();
-    ctx.translate(cx + Math.cos(a) * radius, cy + Math.sin(a) * radius);
-    ctx.rotate(flip ? a - Math.PI / 2 : a + Math.PI / 2);
-    ctx.fillText(c, 0, 0);
-    ctx.restore();
-  }
-  ctx.restore();
-}
-
-/**
- * The LET'S BUILD TOGETHER stamp the solo card prints top-right.
+ * The caption is *inside* the mount rather than under it on the illustration.
+ * Set loose on the art it would have to survive a sunlit villa, a sunset sky and
+ * a night beach in the same coordinates, which no ink colour does; on the mount
+ * it is simply green on cream, the way the solo card sets its data row.
  *
- * Drawn rather than lifted off the plate, because the crew card's stock changes
- * colour per printing and a bitmap stamp would carry the day plate's cream with
- * it onto the violet night stock.
+ * Without a photo it prints initials, so the row doesn't collapse into a hole
+ * while someone is still uploading.
  */
-function drawStamp(ctx: CanvasRenderingContext2D, ink: CrewInk, fonts: Fonts) {
-  const { cx, cy, r } = CREW.stamp;
-
-  ctx.save();
-  ctx.strokeStyle = ink.ink;
-  ctx.lineWidth = 2.5;
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.stroke();
-
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.arc(cx, cy, r - 7, 0, Math.PI * 2);
-  ctx.stroke();
-
-  ctx.fillStyle = ink.ink;
-  ctx.font = `700 9px ${fonts.mono}`;
-  arcText(ctx, "LET'S BUILD", cx, cy, r - 16, Math.PI * 1.30, Math.PI * 0.40);
-  arcText(ctx, "TOGETHER", cx, cy, r - 16, Math.PI * 0.32, Math.PI * 0.36, true);
-
-  ctx.font = `900 24px ${fonts.display}`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("HH", cx, cy + 1);
-  ctx.restore();
-}
-
-/**
- * One member's photo, in a printed window.
- *
- * Same treatment as the solo card's window — a cream mount with a pink keyline,
- * photo inset so the keyline survives — because a crew window is the same
- * printed object, just smaller and repeated. Without a photo it prints
- * initials, so the row doesn't collapse into a hole while someone uploads.
- */
-function drawCrewWindow(
+function drawCrewMember(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
-  w: number,
-  h: number,
+  member: { name: string; builderClass: string; tier: Tier },
   photo: PhotoSource | null,
-  initials: string,
-  tier: Tier,
-  ink: CrewInk,
   fonts: Fonts,
 ) {
+  const pad = CREW.window.pad;
+  const w = CREW_MOUNT_W;
+  const h = CREW_MOUNT_H;
+  const photoW = CREW_TILE_W;
+  const photoH = CREW.window.h;
+
   ctx.save();
 
-  /* the mount sits proud of the photo, like a printed matte */
-  roundRectPath(ctx, x, y, w, h, CREW.window.radius);
-  ctx.fillStyle = ink.mount;
+  /* the mount, which is the thing that makes the type legible on any plate */
+  roundRectPath(ctx, x, y, w, h, CREW.plate.radius);
+  ctx.fillStyle = CREW.plate.fill;
   ctx.fill();
 
+  /* the photo, inset so the mount reads as a matte around it */
   ctx.save();
-  roundRectPath(ctx, x + 8, y + 8, w - 16, h - 16, CREW.window.radius - 4);
+  roundRectPath(ctx, x + pad, y + pad, photoW, photoH, CREW.window.radius);
   ctx.clip();
 
   if (photo) {
-    const iw = w - 16;
-    const ih = h - 16;
-    const scale = Math.max(iw / photo.sw, ih / photo.sh);
+    const scale = Math.max(photoW / photo.sw, photoH / photo.sh);
     const dw = photo.sw * scale;
     const dh = photo.sh * scale;
     ctx.drawImage(
@@ -755,39 +647,72 @@ function drawCrewWindow(
       photo.sy,
       photo.sw,
       photo.sh,
-      x + 8 + (iw - dw) / 2,
-      y + 8 + (ih - dh) / 2,
+      x + pad + (photoW - dw) / 2,
+      y + pad + (photoH - dh) / 2,
       dw,
       dh,
     );
   } else {
     ctx.fillStyle = "rgba(13,59,46,0.10)";
-    ctx.fillRect(x + 8, y + 8, w - 16, h - 16);
-    ctx.fillStyle = "rgba(13,59,46,0.45)";
-    ctx.font = `900 ${Math.round(h * 0.28)}px ${fonts.display}`;
+    ctx.fillRect(x + pad, y + pad, photoW, photoH);
+    ctx.fillStyle = "rgba(13,59,46,0.42)";
+    ctx.font = `900 ${Math.round(photoH * 0.3)}px ${fonts.display}`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(initials, x + w / 2, y + h / 2);
+    ctx.fillText(initialsOf(member.name), x + pad + photoW / 2, y + pad + photoH / 2);
   }
   ctx.restore();
 
-  roundRectPath(ctx, x, y, w, h, CREW.window.radius);
-  ctx.strokeStyle = ink.accent;
-  ctx.lineWidth = 3;
+  /* keyline around the photo, then around the mount — the solo window's
+     treatment, which is what ties the two cards together */
+  roundRectPath(ctx, x + pad, y + pad, photoW, photoH, CREW.window.radius);
+  ctx.strokeStyle = CREW_INK.accent;
+  ctx.lineWidth = 2.5;
   ctx.stroke();
 
-  /* the tier rides in the corner, the way a trading card prints it */
-  const style = foilStyle(tier);
+  roundRectPath(ctx, x, y, w, h, CREW.plate.radius);
+  ctx.strokeStyle = CREW_INK.accent;
+  ctx.lineWidth = CREW.plate.keyline;
+  ctx.stroke();
+
+  /* ---- the caption ---- */
+  const cx = x + w / 2;
+  const capTop = y + pad + photoH;
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = CREW_INK.ink;
+  const name = member.name.toUpperCase();
+  fitMono(ctx, name, fonts.mono, 700, 21, 1.5, w - 20, 12);
+  tracked(ctx, name, cx, capTop + CREW.caption.nameOffset, 1.5, "center");
+
+  /* the class runs long — two lines beats shrinking it into illegibility */
+  ctx.fillStyle = CREW_INK.accent;
+  ctx.font = `500 13px ${fonts.mono}`;
+  const lines = wrapTracked(ctx, member.builderClass, 1.4, w - 20, 2);
+  for (const [li, line] of lines.entries()) {
+    tracked(
+      ctx,
+      line,
+      cx,
+      capTop + CREW.caption.classOffset + li * CREW.caption.classLeading,
+      1.4,
+      "center",
+    );
+  }
+
+  /* the tier rides in the photo's corner, the way a trading card prints it */
+  const style = foilStyle(member.tier);
   if (style) {
     ctx.font = `700 12px ${fonts.mono}`;
-    const cw = trackedWidth(ctx, tier, 2.5) + 18;
-    roundRectPath(ctx, x + 10, y + h - 32, cw, 22, 11);
+    const cw = trackedWidth(ctx, member.tier, 2.5) + 18;
+    roundRectPath(ctx, x + pad + 8, y + pad + photoH - 30, cw, 22, 11);
     ctx.fillStyle = style.chipFill;
     ctx.fill();
     ctx.fillStyle = style.chipInk;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    tracked(ctx, tier, x + 10 + cw / 2, y + h - 21, 2.5, "center");
+    tracked(ctx, member.tier, x + pad + 8 + cw / 2, y + pad + photoH - 19, 2.5, "center");
   }
 
   ctx.restore();
@@ -810,218 +735,92 @@ export function drawCrewCard(
 ) {
   const { crew, photos, fonts, assets, plates } = opts;
   const layer = opts.layer ?? "day";
-  const ink = CREW_INK[layer];
 
   ctx.save();
   ctx.scale(width / CREW.W, height / CREW.H);
 
   /* ---- the stock ---- */
-  /* opaque and never cut back into: transparency in an export renders as white
-     bars on X, which is what scripts/flow.ts asserts against */
-  ctx.fillStyle = ink.edge;
+  /* Opaque, and never cut back into: transparency in an export renders as white
+     bars on X, which is what scripts/flow.ts asserts against. */
+  ctx.fillStyle = "#0a2a1e";
   ctx.fillRect(0, 0, CREW.W, CREW.H);
 
-  roundRectPath(ctx, 6, 6, CREW.W - 12, CREW.H - 12, CREW.radius);
-  ctx.fillStyle = ink.paper;
-  ctx.fill();
-
   ctx.save();
-  roundRectPath(ctx, 6, 6, CREW.W - 12, CREW.H - 12, CREW.radius);
+  roundRectPath(ctx, 0, 0, CREW.W, CREW.H, CREW.radius);
   ctx.clip();
 
-  /* ---- top strip ---- */
+  /* The plate *is* the card — border, kicker, motto, stamp, icon column and
+     dated footer are all printed into it. The clip radius is set above the
+     roundest of the three (sunrise, ~60px) so no plate's own dark corner
+     survives as a sliver inside a squarer clip. */
+  if (plates) {
+    drawCover(ctx, plates[layer], 0, 0, CREW.W, CREW.H);
+  } else {
+    /* fallback while the crew art isn't in the checkout */
+    drawCover(ctx, assets.plates.day, 0, 0, CREW.W, CREW.H);
+  }
+
+  /* ---- the team nameplate ---- */
+  const np = CREW.nameplate;
+  roundRectPath(ctx, np.x, np.y, np.w, np.h, CREW.plate.radius);
+  ctx.fillStyle = CREW.plate.fill;
+  ctx.fill();
+  ctx.strokeStyle = CREW_INK.accent;
+  ctx.lineWidth = CREW.plate.keyline;
+  ctx.stroke();
+
+  /* Badge and name are centred as one group — see the note in layout.ts. */
+  const team = (crew.team || "UNNAMED CREW").toUpperCase().trim();
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
-  ctx.fillStyle = ink.accent;
-  ctx.font = `700 15px ${fonts.mono}`;
-  tracked(ctx, "RESIDENT CREW", CREW.stub.x, CREW.topStrip.baseline, 4.5, "left");
+  const fit = fitLine(ctx, team, fonts.display, np.nameCap, np.nameMaxWidth);
 
-  /* the lanyard slot, punched like the solo card's */
-  roundRectPath(
-    ctx,
-    CREW.W / 2 - CREW.lanyard.w / 2,
-    CREW.lanyard.y,
-    CREW.lanyard.w,
-    CREW.lanyard.h,
-    CREW.lanyard.h / 2,
-  );
-  ctx.fillStyle = ink.ink;
-  ctx.fill();
+  const groupW = CREW.badge.w + CREW.badge.gap + fit.width;
+  const groupX = (CREW.W - groupW) / 2;
 
-  drawStamp(ctx, ink, fonts);
-  dashedLine(ctx, CREW.stub.x, CREW.topStrip.ruleY, 1010, CREW.topStrip.ruleY, ink.soft);
-
-  /* ---- the perforation between stub and crew ---- */
-  dashedLine(
-    ctx,
-    CREW.perforation.x,
-    CREW.perforation.top,
-    CREW.perforation.x,
-    CREW.perforation.bottom,
-    ink.soft,
+  ctx.drawImage(
+    assets.badge,
+    groupX,
+    np.y + (np.h - CREW.badge.h) / 2,
+    CREW.badge.w,
+    CREW.badge.h,
   );
 
-  /* ---- left stub: the motto column ---- */
-  ctx.fillStyle = ink.accent;
-  ctx.font = `700 22px ${fonts.mono}`;
-  ctx.fillText("✳", CREW.motto.x, CREW.motto.y - 30);
-
-  ctx.fillStyle = ink.ink;
-  ctx.font = `500 13px ${fonts.mono}`;
-  for (const [i, line] of ["LESS", "NOISE.", "MORE", "SIGNAL."].entries()) {
-    tracked(ctx, line, CREW.motto.x, CREW.motto.y + i * CREW.motto.leading, 2, "left");
-  }
-  ctx.strokeStyle = "#e2a90f";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(CREW.motto.x, CREW.motto.y + 34);
-  ctx.lineTo(CREW.motto.x + 58, CREW.motto.y + 34);
-  ctx.stroke();
-
-  /* ---- left stub: the team name, set like the solo card's ---- */
-  const parts = crew.team.toUpperCase().trim().split(/\s+/).filter(Boolean);
-  const first = parts.length > 1 ? parts.slice(0, -1).join(" ") : parts[0] || "CREW";
-  const last = parts.length > 1 ? parts[parts.length - 1] : "";
-
-  const fit1 = fitLine(ctx, first, fonts.display, CREW.team.line1.cap, CREW.stub.maxWidth);
-  ctx.fillStyle = ink.ink;
-  if (ink.glow) {
-    ctx.shadowColor = "rgba(140,255,225,0.35)";
-    ctx.shadowBlur = 14;
-  }
-  drawFitted(ctx, first, CREW.stub.x, CREW.team.line1.baseline, fit1);
-  ctx.shadowBlur = 0;
-
-  if (last) {
-    const fit2 = fitLine(ctx, last, fonts.display, CREW.team.line2.cap, CREW.stub.maxWidth);
-    ctx.fillStyle = ink.accent;
-    if (ink.glow) {
-      ctx.shadowColor = "rgba(255,0,128,0.55)";
-      ctx.shadowBlur = 22;
-    }
-    drawFitted(ctx, last, CREW.stub.x, CREW.team.line2.baseline, fit2);
-    ctx.shadowBlur = 0;
-  }
-
-  ctx.drawImage(assets.badge, CREW.badge.x, CREW.badge.y, CREW.badge.w, CREW.badge.h);
-
-  /* ---- left stub: the pass number ---- */
-  ctx.fillStyle = ink.soft;
-  ctx.font = `500 12px ${fonts.mono}`;
-  tracked(ctx, "PASS NO.", CREW.stub.x, CREW.passLabelBaseline, 3.4, "left");
-
-  ctx.fillStyle = ink.accent;
-  ctx.font = `700 38px ${fonts.mono}`;
-  tracked(ctx, crew.passNo, CREW.stub.x, CREW.passValueBaseline, 2, "left");
-
-  ctx.fillStyle = ink.soft;
-  ctx.font = `500 12px ${fonts.mono}`;
-  tracked(
+  ctx.fillStyle = CREW_INK.ink;
+  drawFitted(
     ctx,
-    `${crew.members.length} BUILDERS · ONE FRAME`,
-    CREW.stub.x,
-    CREW.crewOfBaseline,
-    2.4,
-    "left",
+    team,
+    groupX + CREW.badge.w + CREW.badge.gap,
+    np.y + np.h / 2 + np.nameCap / 2,
+    fit,
   );
 
-  /* ---- right: the illustrated band ---- */
-  ctx.save();
-  roundRectPath(ctx, CREW.band.x, CREW.band.y, CREW.band.w, CREW.band.h, CREW.band.radius);
-  ctx.clip();
-  if (plates) {
-    drawCover(ctx, plates[layer], CREW.band.x, CREW.band.y, CREW.band.w, CREW.band.h);
-  } else {
-    /* fallback while the crew art isn't in the checkout: the solo day plate */
-    drawCover(ctx, assets.plates.day, CREW.band.x, CREW.band.y, CREW.band.w, CREW.band.h);
-  }
-  ctx.restore();
-
-  roundRectPath(ctx, CREW.band.x, CREW.band.y, CREW.band.w, CREW.band.h, CREW.band.radius);
-  ctx.strokeStyle = ink.ink;
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  /* ---- the printed windows, on the band ---- */
+  /* ---- the crew ---- */
   const n = crew.members.length;
-  const total = n * CREW_TILE_W + (n - 1) * CREW.window.gap;
-  let x = CREW.band.x + (CREW.band.w - total) / 2;
+  const total = n * CREW_MOUNT_W + (n - 1) * CREW.window.gap;
+  let x = (CREW.W - total) / 2;
 
   for (const [i, member] of crew.members.entries()) {
-    drawCrewWindow(
-      ctx,
-      x,
-      CREW.window.y,
-      CREW_TILE_W,
-      CREW.window.h,
-      photos[i] ?? null,
-      initialsOf(member.name),
-      member.tier,
-      ink,
-      fonts,
-    );
-
-    const cx = x + CREW_TILE_W / 2;
-
-    ctx.textAlign = "center";
-    ctx.textBaseline = "alphabetic";
-    ctx.fillStyle = ink.ink;
-    fitMono(ctx, member.name.toUpperCase(), fonts.mono, 700, 21, 1.5, CREW_TILE_W, 12);
-    tracked(ctx, member.name.toUpperCase(), cx, CREW.memberNameBaseline, 1.5, "center");
-
-    /* the class runs long — two lines beats shrinking it into illegibility */
-    ctx.fillStyle = ink.accent;
-    ctx.font = `500 13px ${fonts.mono}`;
-    const lines = wrapTracked(ctx, member.builderClass, 1.4, CREW_TILE_W, 2);
-    for (const [li, line] of lines.entries()) {
-      tracked(
-        ctx,
-        line,
-        cx,
-        CREW.memberClassBaseline + li * CREW.memberClassLeading,
-        1.4,
-        "center",
-      );
-    }
-
-    x += CREW_TILE_W + CREW.window.gap;
+    drawCrewMember(ctx, x, CREW.window.y, member, photos[i] ?? null, fonts);
+    x += CREW_MOUNT_W + CREW.window.gap;
   }
 
-  /* ---- footer ---- */
-  ctx.strokeStyle = "#e2a90f";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(CREW.band.x, CREW.ruleY);
-  ctx.lineTo(CREW.W - 52, CREW.ruleY);
-  ctx.stroke();
-
-  const footerCx = CREW.band.x + CREW.band.w / 2;
-
+  /* ---- the blacklight line ---- */
+  /* Night only, and the one thing drawn straight onto the illustration rather
+     than onto a mount — see the note on CREW.secret. Nothing else prints below
+     the tiles: the plate closes the card with its own dated footer. */
   if (layer === "night") {
-    /* the blacklight line takes the date's place — the payoff for tilting, and
-       the reason the crew pass earns three printings rather than one */
     ctx.textAlign = "center";
     ctx.textBaseline = "alphabetic";
-    ctx.font = `700 19px ${fonts.mono}`;
+    fitMono(ctx, crew.secret, fonts.mono, 700, CREW.secret.size, 3, np.w, 13);
     ctx.fillStyle = "#ff2d9b";
     ctx.shadowColor = "#ff0080";
-    ctx.shadowBlur = 20;
-    tracked(ctx, crew.secret, footerCx, CREW.footerBaseline, 3, "center");
-    ctx.shadowBlur = 8;
-    tracked(ctx, crew.secret, footerCx, CREW.footerBaseline, 3, "center");
+    ctx.shadowBlur = 22;
+    tracked(ctx, crew.secret, CREW.W / 2, CREW.secret.y, 3, "center");
+    ctx.shadowBlur = 9;
+    tracked(ctx, crew.secret, CREW.W / 2, CREW.secret.y, 3, "center");
     ctx.shadowBlur = 0;
-  } else {
-    ctx.textAlign = "center";
-    ctx.textBaseline = "alphabetic";
-    ctx.font = `500 15px ${fonts.mono}`;
-    ctx.fillStyle = ink.soft;
-    tracked(ctx, "✳  28 – 31 OCT 2026  ✳", footerCx, CREW.footerBaseline, 3, "center");
   }
-
-  ctx.textAlign = "right";
-  ctx.fillStyle = ink.accent;
-  ctx.font = `700 17px ${fonts.mono}`;
-  tracked(ctx, "#FrameInGoa", CREW.W - 52, CREW.footerBaseline, 1.6, "right");
 
   ctx.restore();
   ctx.restore();

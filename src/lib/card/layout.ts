@@ -118,69 +118,100 @@ export const SECRET = { y: 1212, size: 27 };
 /**
  * The crew pass — one combined card for 2–3 people.
  *
- * Landscape, and at the share scene's exact dimensions, for two reasons. The
- * illustrated plates print a single portrait photo window 333x499, and there is
- * no way to divide that into two or three slots without either banding faces
- * into letterbox strips or squeezing them into 111px columns — the geometry
- * simply doesn't subdivide. And a crew card that is already 16:9 needs no second
- * composition to be postable: X crops portrait images in-timeline, so the solo
- * card has to be composited into a landscape field before it can be shared,
- * while this one *is* the field.
+ * Built on three illustrated plates the way the solo card is, and with the same
+ * division of labour: **the plate is the card, code draws only what changes.**
+ * The art already prints the border, the lanyard slot, the RESIDENT kicker, the
+ * motto column, the HH stamp, the CODE/BUILD/CHAI/REPEAT column and the dated
+ * footer, so the renderer must draw *around* those rather than over them. An
+ * earlier version drew all of that chrome itself, on a plate used only as a
+ * cropped band; against art that bakes it in, every one of those would double.
  *
- * The plate art still carries it — drawn as a dimmed cover behind the type, the
- * same treatment `scene.ts` gives the solo share image, so the two read as one
- * system rather than two designs.
+ * Coordinates are in plate pixels, 1536 x 1024. The art is 3:2 and keeps its own
+ * shape — cropping back to the previous 16:9 would take ~160px off the height,
+ * which is exactly where the kicker and the footer live. `scene.ts` composites
+ * it into a 16:9 field for sharing instead, as it already does for the solo card.
  *
  * Tiles are cut at `PHOTO_ASPECT`, so a crew photo goes through exactly the same
  * subject-aware crop a solo photo does.
  */
 export const CREW = {
-  W: 1200,
-  H: 675,
-  radius: 26,
+  W: 1536,
+  H: 1024,
+  /**
+   * Set above the roundest of the three plates rather than to a chosen value.
+   * Each plate prints its own corner against a dark surround — ~44px on day and
+   * night, ~60px on sunrise — and a clip squarer than the art leaves that dark
+   * corner showing as a sliver inside the card.
+   */
+  radius: 62,
 
   /**
-   * A boarding-pass split: an identity stub on the left, the crew on the right,
-   * divided by a perforation.
+   * What the plates already print, and the renderer may not touch.
    *
-   * The first version stacked a headline over three tiles on a photographic
-   * background, which read as a social banner rather than as a document. The
-   * solo card is unmistakably a *printed card* — cream stock, dashed rules,
-   * a stamp, printed windows, a labelled data row — and the crew pass has to
-   * belong to the same object. Landscape can't stack the solo card's bands, so
-   * it splits them left/right instead.
+   * Measured in `scripts/crewfit.ts`. Kept as data so the placement below can be
+   * checked against it rather than eyeballed, and so a future set of plates that
+   * moves the chrome has one place to declare it.
    */
-  stub: { w: 376, x: 52, maxWidth: 300 },
-  perforation: { x: 376, top: 40, bottom: 636 },
+  reserved: {
+    top: 150,
+    bottom: 935,
+    left: 195,
+    right: 1370,
+  },
 
-  topStrip: { baseline: 62, ruleY: 96 },
-  lanyard: { w: 122, h: 22, y: 34 },
-  stamp: { cx: 1104, cy: 62, r: 44 },
+  /**
+   * Everything the renderer draws sits on a printed mount — cream stock, pink
+   * keyline — rather than straight onto the illustration.
+   *
+   * This is not decoration. The same cell of the card swings from luma 19 to 217
+   * between the night and day plates, so there is no ink, light or dark, that
+   * stays legible across all three printings. The solo card hit this exact wall
+   * with its builder-class chip and solved it the same way. The mount also means
+   * the type is pixel-identical on all three layers, so nothing swims mid-tilt.
+   */
+  plate: { fill: "rgba(244,235,216,0.96)", radius: 16, keyline: 2.5 },
 
-  /** left stub, top to bottom */
-  motto: { x: 52, y: 160, leading: 22 },
-  team: { line1: { cap: 56, baseline: 320 }, line2: { cap: 50, baseline: 384 } },
-  badge: { x: 52, y: 404, w: 108, h: 74 },
-  passLabelBaseline: 520,
-  passValueBaseline: 564,
-  crewOfBaseline: 602,
+  /**
+   * The team nameplate.
+   *
+   * The badge and the name are centred *as a group* inside it. Pinning the badge
+   * to the left edge and centring the name on the card independently leaves the
+   * pair visibly left-heavy, because the plate is much wider than the name.
+   *
+   * It and the tile row are centred together in the band the art leaves free,
+   * rather than hung from the top — there is no printed footer of our own to
+   * close the composition now, so the illustration has to.
+   */
+  nameplate: { x: 358, y: 232, w: 820, h: 114, nameMaxWidth: 600, nameCap: 52 },
+  badge: { w: 96, h: 66, gap: 26 },
 
-  /** right side: the illustrated band with the printed windows on it */
-  band: { x: 400, y: 110, w: 756, h: 360, radius: 18 },
-  window: { y: 146, h: 288, gap: 42, radius: 14 },
+  /**
+   * The tile row, centred on the card. Sized so three tiles and their gaps clear
+   * the right-hand icon column at x 1370, and so the row plus its caption band
+   * still lands above the printed footer at y 935.
+   */
+  window: { y: 376, h: 366, gap: 46, radius: 14, pad: 13 },
+  /** name + builder class, printed on the mount under the photo */
+  caption: { h: 88, nameOffset: 30, classOffset: 52, classLeading: 18 },
 
-  memberNameBaseline: 506,
-  /** the builder class wraps to at most two lines under the name */
-  memberClassBaseline: 530,
-  memberClassLeading: 20,
-
-  ruleY: 578,
-  /** date on day and sunrise; the blacklight line takes its place at night */
-  footerBaseline: 618,
+  /**
+   * The blacklight line, on the night printing only — the payoff for tilting,
+   * and the reason the crew pass earns three printings rather than one.
+   *
+   * The only thing on the card drawn straight onto the illustration rather than
+   * on a mount, and it can be: it exists on one layer, and that layer is dark
+   * everywhere (`crewfit.ts` puts night's luma under 60 across this band), so
+   * glowing pink holds without help. A mount here would read as a label rather
+   * than as something surfacing out of the card.
+   */
+  secret: { y: 908, size: 21 },
 };
 
 /** Window width follows the card's own photo aspect, so the crop is unchanged. */
 export const CREW_TILE_W = Math.round(CREW.window.h * PHOTO_ASPECT);
+/** The mount is the photo plus its matte plus the printed caption band. */
+export const CREW_MOUNT_W = CREW_TILE_W + CREW.window.pad * 2;
+export const CREW_MOUNT_H = CREW.window.h + CREW.window.pad * 2 + CREW.caption.h;
 
 export const INK = {
   green: "#0d3b2e",

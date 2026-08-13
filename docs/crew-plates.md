@@ -3,92 +3,83 @@
 The crew pass has three illustrated printings — day, sunrise, blacklight — the
 way the solo card does, so it tilts and hides a secret like the solo card does.
 
-They are **composed, not hand-drawn**, from three of the event's own
-illustrations:
+They are **hand-drawn art, dropped in whole**. The plate *is* the card: it prints
+the border, the lanyard slot, the RESIDENT kicker, the LESS NOISE / MORE SIGNAL
+motto, the HH stamp, the CODE / BUILD / CHAI / REPEAT column and the dated
+footer. The renderer draws only what changes.
 
 ```bash
-cd public/plates/crew/incoming/raw
-curl -o sunrise.png "https://hhgoa.com/assets/Sun%20rise.png"
-curl -o hackers.png "https://hhgoa.com/assets/hackers.png"
-curl -o trees.png   "https://hhgoa.com/assets/footer%20trees.png"
-cd -
+# drop crew-day.png / crew-sunrise.png / crew-night.png into
+# public/plates/crew/incoming/ then:
 
-bun run scripts/crewart.ts      # compose the three -> incoming/crew-*.png
-bun run scripts/crewplates.ts   # encode -> public/plates/crew/*.webp
-bun run scripts/crew.ts photo.jpg
+bun run scripts/crewfit.ts       # measure the art before trusting it
+bun run scripts/crewplates.ts    # encode -> public/plates/crew/*.webp
+bun run scripts/crewpreview.ts   # render 2- and 3-member crews, all 3 layers
 ```
-
-| Printing | Source | Why |
-|---|---|---|
-| **day** | `hackers.png` | Five hackers at a long table — the one official illustration that is literally a crew, and already 1.79:1. The photo tiles land *at the table*, with the drawn crew either side. This is also the printing that gets exported, so it is the one that has to carry the post. |
-| **sunrise** | `Sun rise.png` | Beach at dawn |
-| **night** | `footer trees.png` | Palms framing an open centre — which is exactly a card's shape |
-
-**Three different illustrations, not one recoloured three times.** The solo
-card's three faces started as three independently produced artworks, and the
-crew card matches that. An earlier version graded a single scene three ways; it
-read as a filter rather than as a card. Together they also tell the event's own
-arc — dawn on the beach, the crew heads-down at the table, then after dark.
-
-## What the grading has to solve
-
-**Each still has to read as its time of day.** A `soft-light` pass was the first
-attempt and it is close to a no-op against flat saturated colour. It now
-split-tones: `multiply` pulls the greens toward the mood's shadow colour,
-`screen` lifts the sun and the line work. Sunrise also gets a screened wash over
-the upper sky, because multiplying orange into green gives olive — a real dusk
-colour, but not a dawn one.
-
-**Cream type lands on white.** `hackers.png` is mostly white house and cream
-tabletop and `Sun rise.png`'s bottom third is white villas, which is exactly
-where the member names and footer sit. A gradient takes that band down; it reads
-as dusk rather than as a fix, and `day` grades harder than the others for the
-same reason. `crewplates.ts` reports mean luma and warns past 165 — a background
-too bright to hold cream is the one contrast failure the renderer cannot
-correct.
-
-## What the plates deliberately do not contain
-
-**No text, no photo windows, no card border.** Every word, the three photo
-tiles, the keyline and the badge are drawn in code.
-
-Two reasons. `scripts/plates.ts` spends most of its length compensating for
-three independently produced solo designs putting *one* photo window in three
-slightly different places; printing three windows would triple that problem.
-And a printed window fixes the team size — a two-person crew would show one
-empty frame. Drawing the tiles in code means one set of plates serves both
-sizes, the tiles are pixel-identical across all three printings, and the photo
-cannot drift against its own frame mid-tilt.
-
-That is also why `crewplates.ts` only checks geometry and encodes: there is
-nothing between the three that can fail to line up, so there is nothing to
-register.
-
-## Replacing them with custom art
-
-If someone draws proper crew plates later, drop them in and skip `crewart.ts`:
 
 | | |
 |---|---|
-| **Size** | **2400 × 1350** (16:9) |
+| **Size** | **1536 × 1024** (3:2) |
 | **Files** | `crew-day.png`, `crew-sunrise.png`, `crew-night.png` |
 | **Location** | `public/plates/crew/incoming/` |
 
-Full-bleed background only — no text, no windows, no border, per above. Keep
-these bands calm, since code draws over them. Coordinates are on a 1200 × 675
-grid; double them for the file.
+## Why the card is 3:2 and not 16:9
 
-| Band | Region | What lands there |
+The earlier composed plates were 16:9, and the crew card was sized to match so it
+could be posted with no compositing step. The illustrated art is 3:2, and
+cropping it back to 16:9 takes ~160px off the height — which is exactly where the
+kicker and the dated footer live.
+
+So the card takes the art's shape, and `scene.ts` composites it into a 16:9 field
+for sharing, the way it already does for the portrait solo card. The export is
+still 2400 × 1350, so `/id/[slug]` can keep declaring one `og:image` size for
+every pass it serves.
+
+## What the renderer draws, and why it draws it on mounts
+
+Only the crew's own content: the team nameplate, the गोवा badge, the photo tiles,
+each member's name and builder class, the pass number, `#FrameInGoa`, and the
+blacklight secret.
+
+All of it sits on **printed cream mounts with a pink keyline**, never straight
+onto the illustration. `scripts/crewfit.ts` prints a calm grid — mean luma and
+gradient energy per cell, worst case across the three plates — and the same cell
+swings from luma 19 to 217 between the night and day printings. No ink, light or
+dark, stays legible across that. The solo card hit the same wall with its
+builder-class chip and solved it the same way.
+
+The mounts have a second benefit: because they are opaque, the type can be drawn
+at identical coordinates on all three layers without regard to what is underneath,
+so nothing swims while the illustration changes mid-tilt.
+
+Member names live *inside* the tile mount rather than under it, for the same
+reason — under it, they would be back on bare illustration.
+
+## Registration
+
+Not needed, unlike the solo plates. `crewfit.ts` reports all three at 1537×1023
+with the card full-bleed, so there is nothing between them that can fail to line
+up.
+
+The one thing it does catch: each plate prints its own **corner radius** against a
+dark surround — ~44px on day and night, ~60px on sunrise. `CREW.radius` is set to
+62, above the roundest of the three, because a clip squarer than the art leaves
+that dark corner showing as a sliver inside the card.
+
+## Reserved bands
+
+`CREW.reserved` in `layout.ts` records what the art already prints. Anything the
+renderer draws has to clear it.
+
+| Band | Region (1536 × 1024) | What the plate prints there |
 |---|---|---|
-| Header left | x 46–950, y 40–190 | Kicker + team name |
-| Header right | x 1014–1154, y 60–156 | The गोवा badge |
-| **Centre** | **x 274–926, y 208–496** | **The photo tiles — keep clearest** |
-| Names | x 274–926, y 500–580 | Names + builder classes |
-| Secret | centred, y ≈ 620 | Blacklight line, night plate only |
-| Footer | x 46–1154, y 600–652 | Rule, pass number, `#FrameInGoa` |
+| Top | y < 150 | Kicker, globe, lanyard slot, dashed rule, HH stamp |
+| Left | x < 195, y 180–420 | ✳ and the motto, with its gold rule |
+| Right | x > 1370, y 340–760 | CODE / BUILD / CHAI / REPEAT |
+| Bottom | y > 935 | Gold rules and `28 – 31 OCT 2026` |
 
-Then `bun run scripts/crewplates.ts`, which encodes them and flips
-`CREW_PLATES_AVAILABLE`.
+Which leaves x 200–1360, y 165–930 for the nameplate, the tile row and the
+footer strip, in that order.
 
 ## The availability flag
 
@@ -98,6 +89,13 @@ requesting it: a miss on a static asset logs a 404 on every visit, which is
 noise in production and makes a genuinely broken asset indistinguishable from
 the expected empty state in the checks that treat console errors as failures.
 
-With the flag false, `drawCrewCard` falls back to a composed background and
-ignores the layer, so all three canvases render the same image — the tilt does
+With the flag false, `drawCrewCard` falls back to the solo day plate and ignores
+the layer, so all three canvases render the same background — the tilt does
 nothing visible and nothing breaks.
+
+## `scripts/crewart.ts`
+
+Superseded. It composed plates from three of the event's own illustrations when
+there was no crew art; it is kept only because it documents that fallback. Do not
+run it against the current plates — it writes to the same `incoming/` filenames
+and would overwrite them.

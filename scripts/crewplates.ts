@@ -25,9 +25,17 @@ const ROOT = join(new URL(".", import.meta.url).pathname, "..");
 const IN = join(ROOT, "public/plates/crew/incoming");
 const OUT = join(ROOT, "public/plates/crew");
 
-/** The card's own aspect. Sources are expected to match it. */
-const TARGET_W = 2400;
-const TARGET_H = 1350;
+/**
+ * The card's own aspect, which the illustrations define rather than obey.
+ *
+ * The crew art is 3:2, not the 16:9 the first composed plates were. Cropping it
+ * back to 16:9 would take ~160px off the height, and the printed chrome — the
+ * RESIDENT kicker at the top, the dated footer at the bottom — lives in exactly
+ * those bands. So the card takes the art's shape and `scene.ts` composites it
+ * into a 16:9 field for sharing, the way it already does for the solo card.
+ */
+const TARGET_W = 1536;
+const TARGET_H = 1024;
 const ASPECT = TARGET_W / TARGET_H;
 
 const LAYERS = ["day", "sunrise", "night"] as const;
@@ -74,8 +82,10 @@ for (const layer of LAYERS) {
   const dh = img.height * scale;
   g.drawImage(img, (TARGET_W - dw) / 2, (TARGET_H - dh) / 2, dw, dh);
 
-  /* the type sits on cream and yellow, so flag a background too bright to
-     hold it — the one failure that can't be corrected in the renderer */
+  /* Reported rather than enforced. Every word the renderer draws now sits on a
+     printed mount, because the same cell swings from luma 19 to 217 between the
+     day and night plates and no single ink survives that — see the calm grid in
+     scripts/crewfit.ts. This is a sanity read on the art, not a gate. */
   const { data } = g.getImageData(0, 0, TARGET_W, TARGET_H);
   let sum = 0;
   for (let i = 0; i < data.length; i += 4) {

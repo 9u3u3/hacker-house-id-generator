@@ -147,7 +147,9 @@ export function CrewPass({
         style={
           {
             "--card-aspect": `${CREW.W} / ${CREW.H}`,
-            "--card-width": "560px",
+            /* landscape and dense with small type, so it needs room — at the
+               solo card's 380px the member names were unreadable */
+            "--card-width": "1100px",
           } as React.CSSProperties
         }
         {...dragHandlers}

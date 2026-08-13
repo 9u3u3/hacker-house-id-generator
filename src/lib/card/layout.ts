@@ -137,31 +137,50 @@ export const SECRET = { y: 1212, size: 27 };
 export const CREW = {
   W: 1200,
   H: 675,
-  margin: 46,
-  /** "HACKER HOUSE GOA · CREW PASS" */
-  kickerBaseline: 84,
-  team: { capHeight: 84, baseline: 176, maxWidth: 938 },
-  badge: { x: 1014, y: 60, w: 140, h: 96 },
-  tile: { top: 208, height: 288, gap: 36, radius: 16 },
-  memberNameBaseline: 528,
-  /** the builder class wraps to at most two lines under the name */
-  memberClassBaseline: 554,
-  memberClassLeading: 20,
-  ruleY: 600,
+  radius: 26,
+
   /**
-   * The blacklight line, centred between the rule and the footer.
+   * A boarding-pass split: an identity stub on the left, the crew on the right,
+   * divided by a perforation.
    *
-   * It needs a band of its own: sitting it above the rule put it straight
-   * through the second line of a member's builder class, which wraps to two
-   * lines whenever the class runs long — so the collision only showed up on
-   * some names.
+   * The first version stacked a headline over three tiles on a photographic
+   * background, which read as a social banner rather than as a document. The
+   * solo card is unmistakably a *printed card* — cream stock, dashed rules,
+   * a stamp, printed windows, a labelled data row — and the crew pass has to
+   * belong to the same object. Landscape can't stack the solo card's bands, so
+   * it splits them left/right instead.
    */
-  secretY: 620,
-  footerBaseline: 652,
+  stub: { w: 376, x: 52, maxWidth: 300 },
+  perforation: { x: 376, top: 40, bottom: 636 },
+
+  topStrip: { baseline: 62, ruleY: 96 },
+  lanyard: { w: 122, h: 22, y: 34 },
+  stamp: { cx: 1104, cy: 62, r: 44 },
+
+  /** left stub, top to bottom */
+  motto: { x: 52, y: 160, leading: 22 },
+  team: { line1: { cap: 56, baseline: 320 }, line2: { cap: 50, baseline: 384 } },
+  badge: { x: 52, y: 404, w: 108, h: 74 },
+  passLabelBaseline: 520,
+  passValueBaseline: 564,
+  crewOfBaseline: 602,
+
+  /** right side: the illustrated band with the printed windows on it */
+  band: { x: 400, y: 110, w: 756, h: 360, radius: 18 },
+  window: { y: 146, h: 288, gap: 42, radius: 14 },
+
+  memberNameBaseline: 506,
+  /** the builder class wraps to at most two lines under the name */
+  memberClassBaseline: 530,
+  memberClassLeading: 20,
+
+  ruleY: 578,
+  /** date on day and sunrise; the blacklight line takes its place at night */
+  footerBaseline: 618,
 };
 
-/** Tile width follows the card's own photo aspect, so the crop is unchanged. */
-export const CREW_TILE_W = Math.round(CREW.tile.height * PHOTO_ASPECT);
+/** Window width follows the card's own photo aspect, so the crop is unchanged. */
+export const CREW_TILE_W = Math.round(CREW.window.h * PHOTO_ASPECT);
 
 export const INK = {
   green: "#0d3b2e",

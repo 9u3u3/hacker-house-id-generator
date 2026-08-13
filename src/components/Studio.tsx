@@ -470,7 +470,18 @@ export function Studio() {
       <Backdrop />
       <Marquee />
 
-      <main className="mx-auto grid w-full max-w-6xl gap-10 px-5 pb-24 pt-10 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)] lg:gap-16 lg:pt-16">
+      {/* The solo card is portrait and sits beside its controls. The crew card
+          is landscape and dense, so it takes the full width with the roster
+          underneath — squeezed into a 420px column its member names were too
+          small to read, which is the whole point of a card with three people
+          on it. */}
+      <main
+        className={
+          isCrew
+            ? "mx-auto flex w-full max-w-6xl flex-col gap-10 px-5 pb-24 pt-10 lg:pt-16"
+            : "mx-auto grid w-full max-w-6xl gap-10 px-5 pb-24 pt-10 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)] lg:gap-16 lg:pt-16"
+        }
+      >
         {/* ---------------- card ---------------- */}
         <section className="flex flex-col items-center gap-5">
           {isCrew ? (
@@ -540,7 +551,9 @@ export function Studio() {
         </section>
 
         {/* ---------------- controls ---------------- */}
-        <section className="flex flex-col gap-7">
+        <section
+          className={`flex flex-col gap-7 ${isCrew ? "mx-auto w-full max-w-2xl" : ""}`}
+        >
           <header>
             <p className="font-mono text-[11px] tracking-[0.35em] text-yellow">
               HACKER HOUSE GOA · 28–31 OCT 2026

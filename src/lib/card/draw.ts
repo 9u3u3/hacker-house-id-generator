@@ -486,7 +486,64 @@ export function drawCard(
 /* crew                                                                */
 /* ------------------------------------------------------------------ */
 
-/** Greedy wrap to at most `maxLines`, ellipsising whatever won't fit. */
+/**
+ * The crew pass is the same printed object as the solo card, laid out
+ * landscape: cream stock, dashed rules, a stamp, printed photo windows on an
+ * illustrated band, and a labelled data row.
+ *
+ * The first version stacked a headline over three tiles on a full-bleed photo
+ * background. It read as a social banner rather than as a document, which is
+ * the one thing the solo card never does. Landscape cannot stack the solo
+ * card's bands top to bottom, so it splits them instead — an identity stub on
+ * the left, the crew on the right, divided by a perforation, the way a
+ * boarding pass does.
+ */
+
+/** Per-printing palette. The card changes stock, not just its lighting. */
+type CrewInk = {
+  paper: string;
+  /** paper edge, a shade darker, so the card has a printed border */
+  edge: string;
+  ink: string;
+  soft: string;
+  accent: string;
+  /** the window mount and the class chip */
+  mount: string;
+  glow: boolean;
+};
+
+const CREW_INK: Record<LayerName, CrewInk> = {
+  day: {
+    paper: "#f4ecd8",
+    edge: "#dcd0b4",
+    ink: "#0d3b2e",
+    soft: "rgba(13,59,46,0.55)",
+    accent: "#e01f68",
+    mount: "#fbf5e6",
+    glow: false,
+  },
+  sunrise: {
+    paper: "#fae1c6",
+    edge: "#e6c3a0",
+    ink: "#5e2a12",
+    soft: "rgba(94,42,18,0.55)",
+    accent: "#d93b18",
+    mount: "#fff1de",
+    glow: false,
+  },
+  /* the solo night plate is holographic pastel, not black — so is this */
+  night: {
+    paper: "#d5c8f2",
+    edge: "#b3a2dd",
+    ink: "#23104a",
+    soft: "rgba(35,16,74,0.55)",
+    accent: "#ff0080",
+    mount: "#efe7ff",
+    glow: true,
+  },
+};
+
+/** Greedy wrap to at most `maxLines`, shedding characters from the last. */
 function wrapTracked(
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -510,7 +567,6 @@ function wrapTracked(
   }
   if (lines.length < maxLines && line) lines.push(line);
 
-  /* the last line still has to fit — shed characters rather than overrun */
   const last = lines.length - 1;
   if (last >= 0) {
     while (lines[last].length > 1 && trackedWidth(ctx, lines[last], spacing) > maxWidth) {
@@ -520,7 +576,7 @@ function wrapTracked(
   return lines;
 }
 
-/** Set a mono line at the largest size that fits, then centre it. */
+/** Set a mono line at the largest size that fits. */
 function fitMono(
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -540,114 +596,24 @@ function fitMono(
   return s;
 }
 
-/**
- * One member's photo, in the printed tile.
- *
- * Same treatment as the solo window — cream ground, pink keyline, photo inset so
- * the keyline survives — because a crew tile is the same object as a solo photo
- * window, just smaller and repeated. Without a photo the tile prints initials,
- * which keeps the row from collapsing into a hole while someone is still
- * uploading.
- */
-function drawCrewTile(
+/** Fill a box with an image, cropping the overflow rather than stretching it. */
+function drawCover(
   ctx: CanvasRenderingContext2D,
+  image: CanvasImageSource,
   x: number,
   y: number,
   w: number,
   h: number,
-  photo: PhotoSource | null,
-  initials: string,
-  tier: Tier,
-  fonts: Fonts,
-) {
-  ctx.save();
-
-  roundRectPath(ctx, x, y, w, h, CREW.tile.radius);
-  ctx.fillStyle = "rgba(242,230,207,0.94)";
-  ctx.fill();
-
-  ctx.save();
-  roundRectPath(ctx, x + 6, y + 6, w - 12, h - 12, CREW.tile.radius - 4);
-  ctx.clip();
-
-  if (photo) {
-    const iw = w - 12;
-    const ih = h - 12;
-    const scale = Math.max(iw / photo.sw, ih / photo.sh);
-    const dw = photo.sw * scale;
-    const dh = photo.sh * scale;
-    ctx.drawImage(
-      photo.image,
-      photo.sx,
-      photo.sy,
-      photo.sw,
-      photo.sh,
-      x + 6 + (iw - dw) / 2,
-      y + 6 + (ih - dh) / 2,
-      dw,
-      dh,
-    );
-  } else {
-    ctx.fillStyle = "rgba(13,59,46,0.12)";
-    ctx.fillRect(x + 6, y + 6, w - 12, h - 12);
-    ctx.fillStyle = "rgba(13,59,46,0.55)";
-    ctx.font = `900 ${Math.round(h * 0.26)}px ${fonts.display}`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(initials, x + w / 2, y + h / 2);
-  }
-  ctx.restore();
-
-  /* the tier rides in the corner of the tile, the way a trading card prints it
-     — there is no room for a chip between the tile and the name below it */
-  const style = foilStyle(tier);
-  if (style) {
-    ctx.font = `700 13px ${fonts.mono}`;
-    const label = tier;
-    const cw = trackedWidth(ctx, label, 2.5) + 20;
-    roundRectPath(ctx, x + 10, y + h - 34, cw, 24, 12);
-    ctx.fillStyle = style.chipFill;
-    ctx.fill();
-    ctx.fillStyle = style.chipInk;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    tracked(ctx, label, x + 10 + cw / 2, y + h - 21, 2.5, "center");
-  }
-
-  roundRectPath(ctx, x, y, w, h, CREW.tile.radius);
-  ctx.strokeStyle = style?.edge ?? INK.pink;
-  ctx.lineWidth = 3;
-  ctx.stroke();
-
-  ctx.restore();
-}
-
-/**
- * Fill a box with an image, cropping the overflow rather than stretching it.
- *
- * The plates are authored at 16:9 to match the card, but nothing enforces that
- * — an export at a slightly different ratio should lose a sliver off an edge,
- * not squash the scene.
- */
-function drawCover(
-  ctx: CanvasRenderingContext2D,
-  image: CanvasImageSource,
-  w: number,
-  h: number,
 ) {
   const iw =
-    (image as HTMLImageElement).naturalWidth ||
-    (image as HTMLCanvasElement).width ||
-    w;
+    (image as HTMLImageElement).naturalWidth || (image as HTMLCanvasElement).width || w;
   const ih =
-    (image as HTMLImageElement).naturalHeight ||
-    (image as HTMLCanvasElement).height ||
-    h;
+    (image as HTMLImageElement).naturalHeight || (image as HTMLCanvasElement).height || h;
 
   const scale = Math.max(w / iw, h / ih);
   const dw = iw * scale;
   const dh = ih * scale;
-  ctx.drawImage(image, (w - dw) / 2, (h - dh) / 2, dw, dh);
+  ctx.drawImage(image, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
 }
 
 function initialsOf(name: string): string {
@@ -657,18 +623,176 @@ function initialsOf(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+/** A dashed rule, the way the solo card scores its top strip. */
+function dashedLine(
+  ctx: CanvasRenderingContext2D,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  color: string,
+) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([7, 7]);
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.restore();
+}
+
 /**
- * The combined team pass.
+ * Text around a circle, for the stamp.
  *
- * hhgoa.com's task text asks for the generator to "bring your teammates into one
- * combined frame", which the single-person card cannot do. This is that card:
- * one header, one serial, one image, with each member keeping the builder class
- * their own inputs mint.
- *
- * It draws from the same canvas pipeline and the same plate art as the solo
- * card, so there is still exactly one renderer and the export cannot drift from
- * what's on screen.
+ * `flip` is what makes the lower half readable. Rotating each glyph by
+ * `angle + 90°` is correct along the top of a circle and upside down along the
+ * bottom, so the bottom arc rotates the other way and runs its characters in
+ * reverse to keep the reading order.
  */
+function arcText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  cx: number,
+  cy: number,
+  radius: number,
+  startAngle: number,
+  sweep: number,
+  flip = false,
+) {
+  const chars = flip ? [...text].reverse() : [...text];
+  const step = sweep / Math.max(1, chars.length - 1);
+
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (const [i, c] of chars.entries()) {
+    const a = startAngle + i * step;
+    ctx.save();
+    ctx.translate(cx + Math.cos(a) * radius, cy + Math.sin(a) * radius);
+    ctx.rotate(flip ? a - Math.PI / 2 : a + Math.PI / 2);
+    ctx.fillText(c, 0, 0);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+/**
+ * The LET'S BUILD TOGETHER stamp the solo card prints top-right.
+ *
+ * Drawn rather than lifted off the plate, because the crew card's stock changes
+ * colour per printing and a bitmap stamp would carry the day plate's cream with
+ * it onto the violet night stock.
+ */
+function drawStamp(ctx: CanvasRenderingContext2D, ink: CrewInk, fonts: Fonts) {
+  const { cx, cy, r } = CREW.stamp;
+
+  ctx.save();
+  ctx.strokeStyle = ink.ink;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 7, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.fillStyle = ink.ink;
+  ctx.font = `700 9px ${fonts.mono}`;
+  arcText(ctx, "LET'S BUILD", cx, cy, r - 16, Math.PI * 1.30, Math.PI * 0.40);
+  arcText(ctx, "TOGETHER", cx, cy, r - 16, Math.PI * 0.32, Math.PI * 0.36, true);
+
+  ctx.font = `900 24px ${fonts.display}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("HH", cx, cy + 1);
+  ctx.restore();
+}
+
+/**
+ * One member's photo, in a printed window.
+ *
+ * Same treatment as the solo card's window — a cream mount with a pink keyline,
+ * photo inset so the keyline survives — because a crew window is the same
+ * printed object, just smaller and repeated. Without a photo it prints
+ * initials, so the row doesn't collapse into a hole while someone uploads.
+ */
+function drawCrewWindow(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  photo: PhotoSource | null,
+  initials: string,
+  tier: Tier,
+  ink: CrewInk,
+  fonts: Fonts,
+) {
+  ctx.save();
+
+  /* the mount sits proud of the photo, like a printed matte */
+  roundRectPath(ctx, x, y, w, h, CREW.window.radius);
+  ctx.fillStyle = ink.mount;
+  ctx.fill();
+
+  ctx.save();
+  roundRectPath(ctx, x + 8, y + 8, w - 16, h - 16, CREW.window.radius - 4);
+  ctx.clip();
+
+  if (photo) {
+    const iw = w - 16;
+    const ih = h - 16;
+    const scale = Math.max(iw / photo.sw, ih / photo.sh);
+    const dw = photo.sw * scale;
+    const dh = photo.sh * scale;
+    ctx.drawImage(
+      photo.image,
+      photo.sx,
+      photo.sy,
+      photo.sw,
+      photo.sh,
+      x + 8 + (iw - dw) / 2,
+      y + 8 + (ih - dh) / 2,
+      dw,
+      dh,
+    );
+  } else {
+    ctx.fillStyle = "rgba(13,59,46,0.10)";
+    ctx.fillRect(x + 8, y + 8, w - 16, h - 16);
+    ctx.fillStyle = "rgba(13,59,46,0.45)";
+    ctx.font = `900 ${Math.round(h * 0.28)}px ${fonts.display}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(initials, x + w / 2, y + h / 2);
+  }
+  ctx.restore();
+
+  roundRectPath(ctx, x, y, w, h, CREW.window.radius);
+  ctx.strokeStyle = ink.accent;
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  /* the tier rides in the corner, the way a trading card prints it */
+  const style = foilStyle(tier);
+  if (style) {
+    ctx.font = `700 12px ${fonts.mono}`;
+    const cw = trackedWidth(ctx, tier, 2.5) + 18;
+    roundRectPath(ctx, x + 10, y + h - 32, cw, 22, 11);
+    ctx.fillStyle = style.chipFill;
+    ctx.fill();
+    ctx.fillStyle = style.chipInk;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    tracked(ctx, tier, x + 10 + cw / 2, y + h - 21, 2.5, "center");
+  }
+
+  ctx.restore();
+}
+
 export function drawCrewCard(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -680,96 +804,160 @@ export function drawCrewCard(
     assets: CardAssets;
     /** the crew's own illustrated plates, when the art has been dropped in */
     plates?: CrewPlates | null;
-    /** which printing to use; only meaningful with `plates` */
+    /** which printing to use */
     layer?: LayerName;
   },
 ) {
   const { crew, photos, fonts, assets, plates } = opts;
   const layer = opts.layer ?? "day";
+  const ink = CREW_INK[layer];
 
   ctx.save();
   ctx.scale(width / CREW.W, height / CREW.H);
 
-  /* ---- ground ---- */
-  /* opaque first and never cut back into: transparency in an export renders as
-     white bars on X, which is what scripts/flow.ts asserts against */
-  ctx.fillStyle = "#08281d";
+  /* ---- the stock ---- */
+  /* opaque and never cut back into: transparency in an export renders as white
+     bars on X, which is what scripts/flow.ts asserts against */
+  ctx.fillStyle = ink.edge;
   ctx.fillRect(0, 0, CREW.W, CREW.H);
 
-  if (plates) {
-    /* the real thing: a 16:9 scene painted for this card, so it needs no
-       blurring, no upscaling and only a light scrim to hold the type */
-    drawCover(ctx, plates[layer], CREW.W, CREW.H);
-    ctx.fillStyle = "rgba(8,40,29,0.28)";
-    ctx.fillRect(0, 0, CREW.W, CREW.H);
-  } else {
-    ctx.save();
-    ctx.globalAlpha = 0.26;
-    /* Fallback while the crew art doesn't exist: the solo day plate, blown up
-       and blurred. Blurred because the solo share scene gets away with this
-       treatment only by covering its left half with the card — here nothing
-       does, and at 2.6x the plate's own printed words come through as legible
-       text rather than texture. Safari before 17 ignores ctx.filter, which
-       just leaves the unblurred art, the same thing scene.ts already ships. */
-    ctx.filter = "blur(9px)";
-    const coverH = CREW.H * 2.6;
-    const coverW = coverH * (PLATE_W / PLATE_H);
-    ctx.drawImage(
-      assets.plates.day,
-      (CREW.W - coverW) / 2,
-      CREW.H * 0.5 - coverH * 0.42,
-      coverW,
-      coverH,
-    );
-    ctx.restore();
+  roundRectPath(ctx, 6, 6, CREW.W - 12, CREW.H - 12, CREW.radius);
+  ctx.fillStyle = ink.paper;
+  ctx.fill();
 
-    ctx.fillStyle = "rgba(8,40,29,0.58)";
-    ctx.fillRect(0, 0, CREW.W, CREW.H);
-  }
+  ctx.save();
+  roundRectPath(ctx, 6, 6, CREW.W - 12, CREW.H - 12, CREW.radius);
+  ctx.clip();
 
-  ctx.strokeStyle = "rgba(242,230,207,0.22)";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.roundRect(14, 14, CREW.W - 28, CREW.H - 28, 12);
-  ctx.stroke();
-
-  /* ---- header ---- */
+  /* ---- top strip ---- */
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = ink.accent;
+  ctx.font = `700 15px ${fonts.mono}`;
+  tracked(ctx, "RESIDENT CREW", CREW.stub.x, CREW.topStrip.baseline, 4.5, "left");
 
-  ctx.fillStyle = "rgba(242,230,207,0.75)";
-  ctx.font = `700 13px ${fonts.mono}`;
-  tracked(
+  /* the lanyard slot, punched like the solo card's */
+  roundRectPath(
     ctx,
-    `HACKER HOUSE GOA · 28–31 OCT 2026 · CREW OF ${crew.members.length}`,
-    CREW.margin,
-    CREW.kickerBaseline,
-    3.4,
-    "left",
+    CREW.W / 2 - CREW.lanyard.w / 2,
+    CREW.lanyard.y,
+    CREW.lanyard.w,
+    CREW.lanyard.h,
+    CREW.lanyard.h / 2,
+  );
+  ctx.fillStyle = ink.ink;
+  ctx.fill();
+
+  drawStamp(ctx, ink, fonts);
+  dashedLine(ctx, CREW.stub.x, CREW.topStrip.ruleY, 1010, CREW.topStrip.ruleY, ink.soft);
+
+  /* ---- the perforation between stub and crew ---- */
+  dashedLine(
+    ctx,
+    CREW.perforation.x,
+    CREW.perforation.top,
+    CREW.perforation.x,
+    CREW.perforation.bottom,
+    ink.soft,
   );
 
-  const team = crew.team.toUpperCase();
-  const fit = fitLine(ctx, team, fonts.display, CREW.team.capHeight, CREW.team.maxWidth);
-  ctx.fillStyle = "#f2e6cf";
-  drawFitted(ctx, team, CREW.margin, CREW.team.baseline, fit);
+  /* ---- left stub: the motto column ---- */
+  ctx.fillStyle = ink.accent;
+  ctx.font = `700 22px ${fonts.mono}`;
+  ctx.fillText("✳", CREW.motto.x, CREW.motto.y - 30);
+
+  ctx.fillStyle = ink.ink;
+  ctx.font = `500 13px ${fonts.mono}`;
+  for (const [i, line] of ["LESS", "NOISE.", "MORE", "SIGNAL."].entries()) {
+    tracked(ctx, line, CREW.motto.x, CREW.motto.y + i * CREW.motto.leading, 2, "left");
+  }
+  ctx.strokeStyle = "#e2a90f";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(CREW.motto.x, CREW.motto.y + 34);
+  ctx.lineTo(CREW.motto.x + 58, CREW.motto.y + 34);
+  ctx.stroke();
+
+  /* ---- left stub: the team name, set like the solo card's ---- */
+  const parts = crew.team.toUpperCase().trim().split(/\s+/).filter(Boolean);
+  const first = parts.length > 1 ? parts.slice(0, -1).join(" ") : parts[0] || "CREW";
+  const last = parts.length > 1 ? parts[parts.length - 1] : "";
+
+  const fit1 = fitLine(ctx, first, fonts.display, CREW.team.line1.cap, CREW.stub.maxWidth);
+  ctx.fillStyle = ink.ink;
+  if (ink.glow) {
+    ctx.shadowColor = "rgba(140,255,225,0.35)";
+    ctx.shadowBlur = 14;
+  }
+  drawFitted(ctx, first, CREW.stub.x, CREW.team.line1.baseline, fit1);
+  ctx.shadowBlur = 0;
+
+  if (last) {
+    const fit2 = fitLine(ctx, last, fonts.display, CREW.team.line2.cap, CREW.stub.maxWidth);
+    ctx.fillStyle = ink.accent;
+    if (ink.glow) {
+      ctx.shadowColor = "rgba(255,0,128,0.55)";
+      ctx.shadowBlur = 22;
+    }
+    drawFitted(ctx, last, CREW.stub.x, CREW.team.line2.baseline, fit2);
+    ctx.shadowBlur = 0;
+  }
 
   ctx.drawImage(assets.badge, CREW.badge.x, CREW.badge.y, CREW.badge.w, CREW.badge.h);
 
-  /* ---- the roster ---- */
+  /* ---- left stub: the pass number ---- */
+  ctx.fillStyle = ink.soft;
+  ctx.font = `500 12px ${fonts.mono}`;
+  tracked(ctx, "PASS NO.", CREW.stub.x, CREW.passLabelBaseline, 3.4, "left");
+
+  ctx.fillStyle = ink.accent;
+  ctx.font = `700 38px ${fonts.mono}`;
+  tracked(ctx, crew.passNo, CREW.stub.x, CREW.passValueBaseline, 2, "left");
+
+  ctx.fillStyle = ink.soft;
+  ctx.font = `500 12px ${fonts.mono}`;
+  tracked(
+    ctx,
+    `${crew.members.length} BUILDERS · ONE FRAME`,
+    CREW.stub.x,
+    CREW.crewOfBaseline,
+    2.4,
+    "left",
+  );
+
+  /* ---- right: the illustrated band ---- */
+  ctx.save();
+  roundRectPath(ctx, CREW.band.x, CREW.band.y, CREW.band.w, CREW.band.h, CREW.band.radius);
+  ctx.clip();
+  if (plates) {
+    drawCover(ctx, plates[layer], CREW.band.x, CREW.band.y, CREW.band.w, CREW.band.h);
+  } else {
+    /* fallback while the crew art isn't in the checkout: the solo day plate */
+    drawCover(ctx, assets.plates.day, CREW.band.x, CREW.band.y, CREW.band.w, CREW.band.h);
+  }
+  ctx.restore();
+
+  roundRectPath(ctx, CREW.band.x, CREW.band.y, CREW.band.w, CREW.band.h, CREW.band.radius);
+  ctx.strokeStyle = ink.ink;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  /* ---- the printed windows, on the band ---- */
   const n = crew.members.length;
-  const total = n * CREW_TILE_W + (n - 1) * CREW.tile.gap;
-  let x = (CREW.W - total) / 2;
+  const total = n * CREW_TILE_W + (n - 1) * CREW.window.gap;
+  let x = CREW.band.x + (CREW.band.w - total) / 2;
 
   for (const [i, member] of crew.members.entries()) {
-    drawCrewTile(
+    drawCrewWindow(
       ctx,
       x,
-      CREW.tile.top,
+      CREW.window.y,
       CREW_TILE_W,
-      CREW.tile.height,
+      CREW.window.h,
       photos[i] ?? null,
       initialsOf(member.name),
       member.tier,
+      ink,
       fonts,
     );
 
@@ -777,13 +965,13 @@ export function drawCrewCard(
 
     ctx.textAlign = "center";
     ctx.textBaseline = "alphabetic";
-    ctx.fillStyle = "#f2e6cf";
-    fitMono(ctx, member.name.toUpperCase(), fonts.mono, 700, 24, 1.5, CREW_TILE_W, 13);
+    ctx.fillStyle = ink.ink;
+    fitMono(ctx, member.name.toUpperCase(), fonts.mono, 700, 21, 1.5, CREW_TILE_W, 12);
     tracked(ctx, member.name.toUpperCase(), cx, CREW.memberNameBaseline, 1.5, "center");
 
     /* the class runs long — two lines beats shrinking it into illegibility */
-    ctx.fillStyle = "#fee101";
-    ctx.font = `500 15px ${fonts.mono}`;
+    ctx.fillStyle = ink.accent;
+    ctx.font = `500 13px ${fonts.mono}`;
     const lines = wrapTracked(ctx, member.builderClass, 1.4, CREW_TILE_W, 2);
     for (const [li, line] of lines.entries()) {
       tracked(
@@ -796,49 +984,45 @@ export function drawCrewCard(
       );
     }
 
-    x += CREW_TILE_W + CREW.tile.gap;
+    x += CREW_TILE_W + CREW.window.gap;
   }
 
   /* ---- footer ---- */
-  ctx.strokeStyle = "rgba(242,230,207,0.22)";
+  ctx.strokeStyle = "#e2a90f";
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(CREW.margin, CREW.ruleY);
-  ctx.lineTo(CREW.W - CREW.margin, CREW.ruleY);
+  ctx.moveTo(CREW.band.x, CREW.ruleY);
+  ctx.lineTo(CREW.W - 52, CREW.ruleY);
   ctx.stroke();
 
-  ctx.textAlign = "left";
-  ctx.fillStyle = "rgba(242,230,207,0.6)";
-  ctx.font = `400 15px ${fonts.mono}`;
-  tracked(
-    ctx,
-    `PASS ${crew.serial} · ${n} BUILDERS · ONE FRAME`,
-    CREW.margin,
-    CREW.footerBaseline,
-    2,
-    "left",
-  );
+  const footerCx = CREW.band.x + CREW.band.w / 2;
 
-  ctx.textAlign = "right";
-  ctx.fillStyle = "#fee101";
-  ctx.font = `700 22px ${fonts.mono}`;
-  tracked(ctx, "#FrameInGoa", CREW.W - CREW.margin, CREW.footerBaseline, 2, "right");
-
-  /* The crew's shared secret, only under blacklight — the same payoff the solo
-     card gives for tilting, and the reason the crew pass earns three printings
-     rather than one. Never exported: the share image is the day layer. */
-  if (layer === "night" && plates) {
+  if (layer === "night") {
+    /* the blacklight line takes the date's place — the payoff for tilting, and
+       the reason the crew pass earns three printings rather than one */
     ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.font = `700 20px ${fonts.mono}`;
-    ctx.fillStyle = "#ffd9f2";
+    ctx.textBaseline = "alphabetic";
+    ctx.font = `700 19px ${fonts.mono}`;
+    ctx.fillStyle = "#ff2d9b";
     ctx.shadowColor = "#ff0080";
-    ctx.shadowBlur = 22;
-    tracked(ctx, crew.secret, CREW.W / 2, CREW.secretY, 3, "center");
-    ctx.shadowBlur = 9;
-    tracked(ctx, crew.secret, CREW.W / 2, CREW.secretY, 3, "center");
+    ctx.shadowBlur = 20;
+    tracked(ctx, crew.secret, footerCx, CREW.footerBaseline, 3, "center");
+    ctx.shadowBlur = 8;
+    tracked(ctx, crew.secret, footerCx, CREW.footerBaseline, 3, "center");
     ctx.shadowBlur = 0;
+  } else {
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    ctx.font = `500 15px ${fonts.mono}`;
+    ctx.fillStyle = ink.soft;
+    tracked(ctx, "✳  28 – 31 OCT 2026  ✳", footerCx, CREW.footerBaseline, 3, "center");
   }
 
+  ctx.textAlign = "right";
+  ctx.fillStyle = ink.accent;
+  ctx.font = `700 17px ${fonts.mono}`;
+  tracked(ctx, "#FrameInGoa", CREW.W - 52, CREW.footerBaseline, 1.6, "right");
+
+  ctx.restore();
   ctx.restore();
 }

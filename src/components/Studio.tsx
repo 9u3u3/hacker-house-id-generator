@@ -40,6 +40,11 @@ type Status = { kind: "idle" | "working" | "error"; message?: string };
     subscribe to — this exists only to satisfy the store contract. */
 const subscribeNever = () => () => {};
 
+type Adjust = { zoom: number; offsetX: number; offsetY: number };
+
+/** What `computeCrop` does on its own: subject-aware, no user input. */
+const AUTO_CROP: Adjust = { zoom: 1, offsetX: 0, offsetY: 0 };
+
 export function Studio() {
   const [name, setName] = useState("");
   const [role, setRole] = useState("");
@@ -54,6 +59,7 @@ export function Studio() {
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [canShareImage, setCanShareImage] = useState(false);
   const [copied, setCopied] = useState<"link" | "caption" | null>(null);
+  const [adjust, setAdjust] = useState<Adjust>(AUTO_CROP);
 
   /* window.location isn't there during the server render, and reading it into
      state from an effect would cascade a second render on every mount */
@@ -71,8 +77,8 @@ export function Studio() {
   );
 
   const photoSource = useMemo(
-    () => (photo ? computeCrop(photo, PHOTO_ASPECT) : null),
-    [photo],
+    () => (photo ? computeCrop(photo, PHOTO_ASPECT, adjust) : null),
+    [photo, adjust],
   );
 
   /* Warm the fonts as soon as the studio mounts. Canvas won't wait for them,
@@ -88,6 +94,8 @@ export function Studio() {
     try {
       const loaded = await loadPhoto(file);
       setPhoto(loaded);
+      /* a new photo gets the auto crop, not the last one's nudges */
+      setAdjust(AUTO_CROP);
       setStatus({ kind: "idle" });
     } catch (err) {
       console.error(err);
@@ -293,6 +301,15 @@ export function Studio() {
             onFile={handleFile}
           />
 
+          {photo && photoSource && (
+            <PhotoFramer
+              photo={photo}
+              crop={photoSource}
+              adjust={adjust}
+              onAdjust={setAdjust}
+            />
+          )}
+
           <div className="grid gap-4 sm:grid-cols-2">
             <Field
               label="NAME"
@@ -327,7 +344,7 @@ export function Studio() {
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-paper/15 bg-green-deep/40 p-4">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-paper/15 bg-green-deep/75 p-4">
             <div className="min-w-0 flex-1">
               <p className="font-mono text-[10px] tracking-[0.3em] text-paper/50">
                 BUILDER CLASS
@@ -407,6 +424,147 @@ export function Studio() {
 /* ------------------------------------------------------------------ */
 
 /**
+ * Nudge the auto-crop when it guesses wrong.
+ *
+ * `computeCrop` has taken `{ zoom, offsetX, offsetY }` since it was written and
+ * nothing ever passed them — the subject-aware crop was the only framing on
+ * offer, and when it missed (a group shot, a subject in the corner) the user was
+ * stuck with the result. The brief's "don't assume users will crop first" is
+ * what auto-crop answers; this is the escape hatch for when it's wrong.
+ *
+ * The rectangle is dragged directly over a thumbnail of the whole photo rather
+ * than over the card, because drag on the card is already the tilt fallback on
+ * touch devices — taking it for cropping would break the reveal on exactly the
+ * phones that have no motion sensor.
+ *
+ * Everything is expressed as a fraction of the crop window, so the overlay is
+ * resolution-independent and `computeCrop`'s existing clamp stops the drag at
+ * the edges of the image for free.
+ */
+function PhotoFramer(props: {
+  photo: LoadedPhoto;
+  crop: PhotoSource;
+  adjust: Adjust;
+  onAdjust: (next: Adjust) => void;
+}) {
+  const { photo, crop, adjust, onAdjust } = props;
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const drag = useRef<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    /* the thumbnail only has to be sharp at ~280 CSS px wide */
+    const w = 560;
+    const h = Math.max(1, Math.round((w * photo.height) / photo.width));
+    canvas.width = w;
+    canvas.height = h;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(photo.source, 0, 0, w, h);
+  }, [photo]);
+
+  const pct = (n: number) => `${n * 100}%`;
+
+  const move = (dxPx: number, dyPx: number) => {
+    const box = frameRef.current;
+    if (!box) return;
+
+    /* screen px -> image px -> fractions of the crop window, which is the unit
+       `computeCrop` offsets in */
+    const perPxX = photo.width / box.clientWidth;
+    const perPxY = photo.height / box.clientHeight;
+
+    onAdjust({
+      ...adjust,
+      offsetX: adjust.offsetX + (dxPx * perPxX) / crop.sw,
+      offsetY: adjust.offsetY + (dyPx * perPxY) / crop.sh,
+    });
+  };
+
+  const touched =
+    adjust.zoom !== AUTO_CROP.zoom ||
+    adjust.offsetX !== AUTO_CROP.offsetX ||
+    adjust.offsetY !== AUTO_CROP.offsetY;
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-paper/15 bg-green-deep/75 p-4">
+      <div className="flex items-center justify-between">
+        <p className="font-mono text-[10px] tracking-[0.3em] text-paper/50">
+          FRAMING {touched ? "· NUDGED" : "· AUTO"}
+        </p>
+        {touched && (
+          <button
+            type="button"
+            onClick={() => onAdjust(AUTO_CROP)}
+            className="font-mono text-[10px] tracking-widest text-yellow underline"
+          >
+            RESET
+          </button>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-4">
+        <div
+          ref={frameRef}
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            drag.current = { x: e.clientX, y: e.clientY };
+          }}
+          onPointerMove={(e) => {
+            if (!drag.current) return;
+            move(e.clientX - drag.current.x, e.clientY - drag.current.y);
+            drag.current = { x: e.clientX, y: e.clientY };
+          }}
+          onPointerUp={() => {
+            drag.current = null;
+          }}
+          onPointerCancel={() => {
+            drag.current = null;
+          }}
+          className="relative w-[180px] shrink-0 cursor-grab touch-none overflow-hidden rounded-lg active:cursor-grabbing"
+        >
+          <canvas ref={canvasRef} className="block w-full" />
+          {/* the spread shadow dims everything outside the window in one pass,
+              clipped by the wrapper's overflow-hidden */}
+          <div
+            className="pointer-events-none absolute rounded-[3px] border-2 border-yellow shadow-[0_0_0_9999px_rgba(8,40,29,0.62)]"
+            style={{
+              left: pct(crop.sx / photo.width),
+              top: pct(crop.sy / photo.height),
+              width: pct(crop.sw / photo.width),
+              height: pct(crop.sh / photo.height),
+            }}
+          />
+        </div>
+
+        <div className="min-w-[140px] flex-1">
+          <label className="font-mono text-[10px] tracking-[0.3em] text-paper/50">
+            ZOOM {adjust.zoom.toFixed(2)}×
+          </label>
+          <input
+            type="range"
+            min={1}
+            max={3}
+            step={0.02}
+            value={adjust.zoom}
+            onChange={(e) => onAdjust({ ...adjust, zoom: Number(e.target.value) })}
+            className="mt-2 w-full accent-yellow"
+          />
+          <p className="mt-2 font-mono text-[10px] leading-relaxed text-paper/45">
+            Drag the box to move the crop. We centre on the face by default.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
  * The manual route, always on screen once there's a name to share.
  *
  * A popup blocker can still eat the tab even when `window.open` fires on the
@@ -429,7 +587,7 @@ function ShareFallback(props: {
     "rounded-full border border-paper/25 px-4 py-2 font-mono text-[11px] tracking-widest text-paper/80 transition hover:border-paper hover:text-paper";
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-paper/15 bg-green-deep/50 p-4">
+    <div className="flex flex-col gap-3 rounded-xl border border-paper/15 bg-green-deep/75 p-4">
       <p className="font-mono text-[10px] tracking-[0.3em] text-paper/50">
         {props.link ? "PUBLISHED — POST IT" : "IF THE POPUP GETS BLOCKED"}
       </p>
@@ -490,7 +648,7 @@ function Field(props: {
         onChange={(e) => props.onChange(e.target.value)}
         placeholder={props.placeholder}
         maxLength={props.maxLength}
-        className="mt-1.5 w-full rounded-lg border border-paper/20 bg-green-deep/50 px-4 py-3 font-mono text-base text-paper outline-none transition placeholder:text-paper/30 focus:border-yellow"
+        className="mt-1.5 w-full rounded-lg border border-paper/20 bg-green-deep/85 px-4 py-3 font-mono text-base text-paper outline-none transition placeholder:text-paper/30 focus:border-yellow"
       />
     </label>
   );

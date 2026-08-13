@@ -3,37 +3,49 @@
 The crew pass has three illustrated printings — day, sunrise, blacklight — the
 way the solo card does, so it tilts and hides a secret like the solo card does.
 
-They are **generated, not hand-drawn**, from the event's own artwork:
+They are **composed, not hand-drawn**, from three of the event's own
+illustrations:
 
 ```bash
-curl -o public/plates/crew/incoming/raw/sunrise.png \
-  "https://hhgoa.com/assets/Sun%20rise.png"
+cd public/plates/crew/incoming/raw
+curl -o sunrise.png "https://hhgoa.com/assets/Sun%20rise.png"
+curl -o hackers.png "https://hhgoa.com/assets/hackers.png"
+curl -o trees.png   "https://hhgoa.com/assets/footer%20trees.png"
+cd -
 
-bun run scripts/crewart.ts      # compose the three moods -> incoming/*.png
+bun run scripts/crewart.ts      # compose the three -> incoming/crew-*.png
 bun run scripts/crewplates.ts   # encode -> public/plates/crew/*.webp
 bun run scripts/crew.ts photo.jpg
 ```
 
-`crewart.ts` crops `Sun rise.png` to the card's 16:9 and grades it three ways.
-That is the same relationship the solo plates have to each other — one scene
-under three lights — and it keeps the crew pass on the actual brand
-illustrations rather than an approximation of them.
+| Printing | Source | Why |
+|---|---|---|
+| **day** | `hackers.png` | Five hackers at a long table — the one official illustration that is literally a crew, and already 1.79:1. The photo tiles land *at the table*, with the drawn crew either side. This is also the printing that gets exported, so it is the one that has to carry the post. |
+| **sunrise** | `Sun rise.png` | Beach at dawn |
+| **night** | `footer trees.png` | Palms framing an open centre — which is exactly a card's shape |
+
+**Three different illustrations, not one recoloured three times.** The solo
+card's three faces started as three independently produced artworks, and the
+crew card matches that. An earlier version graded a single scene three ways; it
+read as a filter rather than as a card. Together they also tell the event's own
+arc — dawn on the beach, the crew heads-down at the table, then after dark.
 
 ## What the grading has to solve
 
-**The three have to be obviously different.** The first attempt used a
-`soft-light` pass, which is close to a no-op against flat saturated colour —
-sunrise came out indistinguishable from day, which defeats the point of a
-lenticular card. It now split-tones: `multiply` pulls the greens toward the
-mood's shadow colour, `screen` lifts the sun and the line work. Sunrise also
-gets a screened wash over the upper sky, because multiplying orange into green
-gives olive, which is a real dusk colour but not a dawn one.
+**Each still has to read as its time of day.** A `soft-light` pass was the first
+attempt and it is close to a no-op against flat saturated colour. It now
+split-tones: `multiply` pulls the greens toward the mood's shadow colour,
+`screen` lifts the sun and the line work. Sunrise also gets a screened wash over
+the upper sky, because multiplying orange into green gives olive — a real dusk
+colour, but not a dawn one.
 
-**The bottom third is white villas, and cream type lands on it.** The member
-names and footer sit exactly there. A gradient takes that band down hard; it
-reads as dusk rather than as a fix. `crewplates.ts` reports mean luma and warns
-past 165 — a background too bright to hold cream is the one contrast failure the
-renderer cannot correct.
+**Cream type lands on white.** `hackers.png` is mostly white house and cream
+tabletop and `Sun rise.png`'s bottom third is white villas, which is exactly
+where the member names and footer sit. A gradient takes that band down; it reads
+as dusk rather than as a fix, and `day` grades harder than the others for the
+same reason. `crewplates.ts` reports mean luma and warns past 165 — a background
+too bright to hold cream is the one contrast failure the renderer cannot
+correct.
 
 ## What the plates deliberately do not contain
 

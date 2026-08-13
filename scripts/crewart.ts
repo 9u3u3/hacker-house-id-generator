@@ -35,24 +35,37 @@ const OUT = join(ROOT, "public/plates/crew/incoming");
 const W = 2400;
 const H = 1350;
 
-if (!existsSync(join(RAW, "sunrise.png"))) {
-  console.error(`missing ${join(RAW, "sunrise.png")}`);
-  console.error('fetch it: curl -o sunrise.png "https://hhgoa.com/assets/Sun%20rise.png"');
-  process.exit(1);
-}
+/**
+ * Three different illustrations, not one recoloured three times.
+ *
+ * The solo card's three faces started as three independently produced
+ * artworks, and the crew card should match that. Grading a single scene three
+ * ways reads as a filter; three real scenes read as a card.
+ *
+ * They also tell the event's own arc — dawn on the beach, the crew heads-down
+ * at the table, then after dark — which is what the four days are.
+ *
+ * `crop` is the band of the source that becomes the card, as fractions of its
+ * height, chosen so the busy part lands behind the photo tiles and the calm
+ * part under the team name.
+ */
+const SOURCES = {
+  sunrise: { file: "sunrise.png", crop: [0.39, 0.95] },
+  /* five hackers at a long table in front of a Goan house — the one official
+     illustration that is literally a crew, and already 1.79:1 */
+  day: { file: "hackers.png", crop: [0.0, 1.0] },
+  /* palms framing an open centre, which is exactly a card's shape */
+  night: { file: "trees.png", crop: [0.0, 1.0] },
+} as const;
 
 mkdirSync(OUT, { recursive: true });
-const scene = await loadImage(join(RAW, "sunrise.png"));
 
-/**
- * The band of the source that becomes the card.
- *
- * Fractions of the source height. Chosen so the horizon and sun land behind the
- * photo tiles, the flat sky sits under the team name, and the villas fall into
- * the bottom third where the scrim can take them down.
- */
-const CROP_TOP = 0.39;
-const CROP_BOTTOM = 0.95;
+for (const { file } of Object.values(SOURCES)) {
+  if (existsSync(join(RAW, file))) continue;
+  console.error(`missing ${join(RAW, file)}`);
+  console.error("fetch the three from https://hhgoa.com/assets/ — see docs/crew-plates.md");
+  process.exit(1);
+}
 
 /**
  * Split-tone grade: multiply tints the darks, screen tints the lights.
@@ -87,12 +100,13 @@ type Grade = {
 };
 
 const GRADES: Record<string, Grade> = {
-  /* midday: the illustration's own palette, just deepened so cream type holds */
+  /* midday at the table. hackers.png is mostly white house and cream tabletop,
+     which cream type cannot sit on, so this grades far harder than the others */
   day: {
     base: "#0b6839",
-    shadow: "rgba(190,230,205,1)",
+    shadow: "rgba(155,210,175,1)",
     highlight: "rgba(255,245,190,0.05)",
-    scrim: "rgba(8,40,29,0.26)",
+    scrim: "rgba(8,40,29,0.30)",
   },
   /* dawn: warm all the way through, the sun doing the work */
   sunrise: {
@@ -116,9 +130,12 @@ for (const [name, grade] of Object.entries(GRADES)) {
   const canvas = createCanvas(W, H);
   const g = canvas.getContext("2d");
 
+  const source = SOURCES[name as keyof typeof SOURCES];
+  const scene = await loadImage(join(RAW, source.file));
+
   /* ---- the scene, cropped to the card ---- */
-  const sy = scene.height * CROP_TOP;
-  const sh = scene.height * (CROP_BOTTOM - CROP_TOP);
+  const sy = scene.height * source.crop[0];
+  const sh = scene.height * (source.crop[1] - source.crop[0]);
   const sw = scene.width;
 
   g.fillStyle = grade.base;

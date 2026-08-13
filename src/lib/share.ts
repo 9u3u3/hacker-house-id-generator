@@ -211,6 +211,12 @@ export function pngFile(blob: Blob, serial: string): File {
   });
 }
 
+export function videoFile(blob: Blob, serial: string, ext: string): File {
+  return new File([blob], `hh-goa-2026-${serial.toLowerCase()}.${ext}`, {
+    type: blob.type,
+  });
+}
+
 /**
  * Whether this device can share the actual image rather than a link.
  *

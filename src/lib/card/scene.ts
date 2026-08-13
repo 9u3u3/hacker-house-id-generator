@@ -33,23 +33,30 @@ export const EXPORT_SCALE = 2;
 const GREEN_DEEP = "#08281d";
 const CREAM = "#f2e6cf";
 
-export function drawShareScene(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  opts: {
-    pass: MintedPass;
-    photo: PhotoSource | null;
-    fonts: Fonts;
-    assets: CardAssets;
+/**
+ * Where the card sits in the scene.
+ *
+ * Pulled out as data because the animated export (`sweep.ts`) has to place the
+ * same rectangle every frame while the chrome around it is drawn once.
+ */
+export const SCENE_CARD = {
+  h: 590,
+  get w() {
+    return this.h * (CARD_W / CARD_H);
   },
+  x: 86,
+  get y() {
+    return (SCENE_H - this.h) / 2;
+  },
+  rotation: -0.028,
+  radius: 22,
+};
+
+/** Everything behind the card: the dimmed plate wash and the card's shadow. */
+export function drawSceneBackdrop(
+  ctx: CanvasRenderingContext2D,
+  assets: CardAssets,
 ) {
-  const { pass, photo, fonts, assets } = opts;
-
-  ctx.save();
-  ctx.scale(width / SCENE_W, height / SCENE_H);
-
-  /* ---- backdrop: the day plate, scaled way up and dimmed ---- */
   ctx.fillStyle = GREEN_DEEP;
   ctx.fillRect(0, 0, SCENE_W, SCENE_H);
 
@@ -70,39 +77,83 @@ export function drawShareScene(
   ctx.fillStyle = "rgba(8,40,29,0.55)";
   ctx.fillRect(0, 0, SCENE_W, SCENE_H);
 
+  /* the card's drop shadow doesn't move with the tilt, so it belongs here */
+  ctx.save();
+  withCardTransform(ctx, () => {
+    ctx.shadowColor = "rgba(0,0,0,0.55)";
+    ctx.shadowBlur = 54;
+    ctx.shadowOffsetY = 22;
+    ctx.fillStyle = "#000";
+    ctx.beginPath();
+    ctx.roundRect(0, 0, SCENE_CARD.w, SCENE_CARD.h, SCENE_CARD.radius);
+    ctx.fill();
+  });
+  ctx.restore();
+}
+
+/** Put the origin at the card's top-left, rotated as the scene places it. */
+export function withCardTransform(
+  ctx: CanvasRenderingContext2D,
+  body: () => void,
+) {
+  ctx.save();
+  ctx.translate(SCENE_CARD.x + SCENE_CARD.w / 2, SCENE_CARD.y + SCENE_CARD.h / 2);
+  ctx.rotate(SCENE_CARD.rotation);
+  ctx.translate(-SCENE_CARD.w / 2, -SCENE_CARD.h / 2);
+  body();
+  ctx.restore();
+}
+
+export function drawShareScene(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  opts: {
+    pass: MintedPass;
+    photo: PhotoSource | null;
+    fonts: Fonts;
+    assets: CardAssets;
+  },
+) {
+  const { pass, photo, fonts, assets } = opts;
+
+  ctx.save();
+  ctx.scale(width / SCENE_W, height / SCENE_H);
+
+  drawSceneBackdrop(ctx, assets);
+
   /* ---- the card ---- */
-  const cardH = 590;
-  const cardW = cardH * (CARD_W / CARD_H);
-  const cardX = 86;
-  const cardY = (SCENE_H - cardH) / 2;
+  withCardTransform(ctx, () => {
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(0, 0, SCENE_CARD.w, SCENE_CARD.h, SCENE_CARD.radius);
+    ctx.clip();
+    drawCard(ctx, SCENE_CARD.w, SCENE_CARD.h, {
+      pass,
+      photo,
+      layer: "day",
+      fonts,
+      assets,
+    });
+    ctx.restore();
+  });
 
-  ctx.save();
-  ctx.translate(cardX + cardW / 2, cardY + cardH / 2);
-  ctx.rotate(-0.028);
-  ctx.translate(-cardW / 2, -cardH / 2);
-
-  ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,0.55)";
-  ctx.shadowBlur = 54;
-  ctx.shadowOffsetY = 22;
-  ctx.fillStyle = "#000";
-  ctx.beginPath();
-  ctx.roundRect(0, 0, cardW, cardH, 22);
-  ctx.fill();
+  drawSceneType(ctx, pass, fonts);
   ctx.restore();
+}
 
-  ctx.save();
-  ctx.beginPath();
-  ctx.roundRect(0, 0, cardW, cardH, 22);
-  ctx.clip();
-  drawCard(ctx, cardW, cardH, { pass, photo, layer: "day", fonts, assets });
-  ctx.restore();
-  ctx.restore();
-
+/** The headline block, the pill and the keyline — none of it tilt-dependent. */
+export function drawSceneType(
+  ctx: CanvasRenderingContext2D,
+  pass: MintedPass,
+  fonts: Fonts,
+  opts: { animated?: boolean } = {},
+) {
   /* ---- the type block ---- */
-  const tx = cardX + cardW + 78;
+  const tx = SCENE_CARD.x + SCENE_CARD.w + 78;
   const maxW = SCENE_W - tx - 70;
 
+  ctx.save();
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
 
@@ -165,7 +216,18 @@ export function drawShareScene(
 
   ctx.fillStyle = "rgba(242,230,207,0.5)";
   ctx.font = `400 13px ${fonts.mono}`;
-  tracked(ctx, "TILT THE CARD ON THE SITE TO SEE WHAT'S HIDING", tx, pillY + 172, 2, "left");
+  /* in the animated export the reveal is right there on screen, so telling the
+     viewer to go and tilt it would be describing what they can already see */
+  tracked(
+    ctx,
+    opts.animated
+      ? "MINT YOUR OWN — TILT IT YOURSELF ON THE SITE"
+      : "TILT THE CARD ON THE SITE TO SEE WHAT'S HIDING",
+    tx,
+    pillY + 172,
+    2,
+    "left",
+  );
 
   /* keyline so the export reads as a designed frame, not a screenshot */
   ctx.strokeStyle = "rgba(242,230,207,0.22)";

@@ -29,7 +29,15 @@ import {
   renderPass,
   sendTabTo,
   shareFileNatively,
+  videoFile,
 } from "@/lib/share";
+import {
+  prepareSweep,
+  SWEEP_CYCLE_MS,
+  SWEEP_DURATION_MS,
+  SWEEP_FPS,
+} from "@/lib/card/sweep";
+import { recordCanvas, videoSupported, type RecordedVideo } from "@/lib/video";
 import type { PhotoSource } from "@/lib/card/draw";
 import { useTilt } from "@/hooks/useTilt";
 import { Backdrop } from "./Backdrop";
@@ -96,6 +104,12 @@ export function Studio() {
   const [canShareImage, setCanShareImage] = useState(false);
   const [copied, setCopied] = useState<"link" | "caption" | null>(null);
   const [adjust, setAdjust] = useState<Adjust>(AUTO_CROP);
+  /* kept with the deps it was recorded from, so a REROLL doesn't leave a
+     "SHARE THE CLIP" button pointing at the previous card */
+  const [video, setVideo] = useState<{
+    deps: readonly unknown[];
+    result: RecordedVideo;
+  } | null>(null);
 
   const [mode, setMode] = useState<Mode>("solo");
   const [team, setTeam] = useState("");
@@ -111,6 +125,9 @@ export function Studio() {
     () => window.location.origin,
     () => "",
   );
+
+  /* MediaRecorder + captureStream aren't universal, and the server can't know */
+  const canRecord = useSyncExternalStore(subscribeNever, videoSupported, () => false);
 
   const tilt = useTilt();
 
@@ -362,6 +379,82 @@ export function Studio() {
       });
   }, [serial, caption, preparedBlob]);
 
+  /**
+   * The animated reveal, as a postable video.
+   *
+   * Solo only: the tilt is the solo card's gimmick and the crew pass has a
+   * single printing, so there is nothing to interlace. Recording runs in real
+   * time — MediaRecorder timestamps from the wall clock — so it takes about as
+   * long as the clip does and reports progress while it goes.
+   */
+  const recordSweep = useCallback(async () => {
+    setStatus({ kind: "working", message: "recording the reveal — 0%" });
+    try {
+      const fonts = resolveFonts();
+      const [assets] = await Promise.all([
+        loadCardAssets(),
+        ensureFontsLoaded(fonts),
+      ]);
+      const sweep = prepareSweep({ pass, photo: photoSource, fonts, assets });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = sweep.width;
+      canvas.height = sweep.height;
+
+      const result = await recordCanvas({
+        canvas,
+        durationMs: SWEEP_DURATION_MS,
+        cycleMs: SWEEP_CYCLE_MS,
+        fps: SWEEP_FPS,
+        drawFrame: sweep.drawFrame,
+        onProgress: (f) =>
+          setStatus({
+            kind: "working",
+            message: `recording the reveal — ${Math.round(f * 100)}%`,
+          }),
+      });
+
+      setVideo({ deps: renderDeps, result });
+
+      const url = URL.createObjectURL(result.blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `hh-goa-2026-${pass.serial.toLowerCase()}.${result.ext}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      requestAnimationFrame(() => URL.revokeObjectURL(url));
+      setStatus({ kind: "idle" });
+    } catch (err) {
+      console.error(err);
+      setStatus({
+        kind: "error",
+        message:
+          err instanceof Error ? `video export failed — ${err.message}` : "video export failed",
+      });
+    }
+  }, [pass, photoSource, renderDeps]);
+
+  const freshVideo =
+    video && sameDeps(video.deps, renderDeps) ? video.result : null;
+
+  /** Share the clip that was just recorded — the blob already exists, so this
+      doesn't have to await anything inside the gesture. */
+  const shareVideo = useCallback(() => {
+    if (!freshVideo) return;
+    const file = videoFile(freshVideo.blob, pass.serial, freshVideo.ext);
+    if (!canShareFile(file)) {
+      setStatus({ kind: "error", message: "this browser won't share video files" });
+      return;
+    }
+    shareFileNatively({ file, caption, url: window.location.origin })
+      .then(() => setStatus({ kind: "idle" }))
+      .catch((err) => {
+        console.error(err);
+        setStatus({ kind: "error", message: "the share sheet wouldn't open" });
+      });
+  }, [freshVideo, pass.serial, caption]);
+
   const copy = useCallback(async (what: "link" | "caption", text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -572,6 +665,36 @@ export function Studio() {
               </button>
             )}
           </div>
+
+          {/* the reveal is the whole product, and a static PNG doesn't carry it */}
+          {!isCrew && canRecord && (
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => void recordSweep()}
+                disabled={!ready || status.kind === "working"}
+                className="rounded-full border border-yellow/60 px-7 py-3.5 font-mono text-sm font-bold tracking-widest text-yellow transition hover:bg-yellow hover:text-green-ink disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                ▶ RECORD THE REVEAL
+              </button>
+
+              {freshVideo && (
+                <button
+                  type="button"
+                  onClick={shareVideo}
+                  className="rounded-full border border-pink/60 px-6 py-3 font-mono text-xs font-bold tracking-widest text-pink transition hover:bg-pink hover:text-paper"
+                >
+                  SHARE THE CLIP
+                </button>
+              )}
+
+              <p className="w-full font-mono text-[10px] leading-relaxed text-paper/45">
+                A {(SWEEP_DURATION_MS / 1000).toFixed(0)}s loop of the tilt, as{" "}
+                {freshVideo?.ext.toUpperCase() ?? "MP4"} — it autoplays in the
+                timeline, where the PNG can&apos;t show the reveal at all.
+              </p>
+            </div>
+          )}
 
           {ready && origin && (
             <ShareFallback

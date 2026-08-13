@@ -117,6 +117,26 @@ perfectly still, which is the more distracting of the two failures by a wide
 margin. The cost is that each layer prints its window slightly differently, so
 the photo shifts a few pixels behind a frame that no longer moves.
 
+### The animated reveal
+
+The tilt is the product, and the thing that gets posted was a static PNG — so the
+best part of the card was invisible in the artifact being scored. `▶ RECORD THE
+REVEAL` captures a 5s loop of the sweep as MP4 (WebM where MP4 recording isn't
+available), which autoplays in the timeline.
+
+The obstacle was that the interlace lived in CSS while every export path is
+canvas, and `MediaRecorder` can only capture a canvas or a stream, never a DOM
+element. So `src/lib/card/sweep.ts` ports the mask maths rather than
+approximating it with a crossfade: same 3px pitch, same duty cycle, same
+`max(0,v)^1.7` ramp, same `-sin(2πt)` path. That file is the one place those
+numbers are duplicated from the stylesheet and `useTilt`.
+
+The three plates and the static chrome are rendered once and each frame just
+composites them — drawing the card three times per frame doesn't hold 30fps.
+Recording runs in real time, because `MediaRecorder` timestamps from the wall
+clock and rendering faster produces a file whose duration doesn't match its
+content.
+
 ### The lenticular effect
 
 A real lenticular card interlaces two images into vertical strips behind a lens
@@ -226,6 +246,7 @@ bun run scripts/flow.ts photo.jpg   # upload → download, checks the PNG decode
 bun run scripts/share.ts photo.jpg  # publish → verify OG tags resolve
 bun run scripts/crew.ts photo.jpg   # CREW roster → download, same pixel assertions
 bun run scripts/intent.ts photo.jpg # SHARE TO X opens on the click, and degrades
+bun run scripts/reveal.ts photo.jpg # records the animated reveal, checks it moves
 ```
 
 Asset pipeline — only needed if the designs change:

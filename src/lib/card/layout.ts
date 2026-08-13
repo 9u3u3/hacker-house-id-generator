@@ -148,7 +148,16 @@ export const CREW = {
   memberClassBaseline: 554,
   memberClassLeading: 20,
   ruleY: 600,
-  footerBaseline: 634,
+  /**
+   * The blacklight line, centred between the rule and the footer.
+   *
+   * It needs a band of its own: sitting it above the rule put it straight
+   * through the second line of a member's builder class, which wraps to two
+   * lines whenever the class runs long — so the collision only showed up on
+   * some names.
+   */
+  secretY: 620,
+  footerBaseline: 652,
 };
 
 /** Tile width follows the card's own photo aspect, so the crop is unchanged. */

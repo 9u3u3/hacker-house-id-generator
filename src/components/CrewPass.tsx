@@ -7,67 +7,91 @@ import { loadCrewPlates, type CrewPlates } from "@/lib/card/crewAssets";
 import { drawCrewCard, type Fonts, type PhotoSource } from "@/lib/card/draw";
 import { ensureFontsLoaded, resolveFonts } from "@/lib/card/fonts";
 import { CREW } from "@/lib/card/layout";
+import type { LayerName } from "@/lib/card/theme";
+import styles from "./TidePass.module.css";
 
-/** Same ceiling TidePass uses, for the same reason: phones fail big allocations
-    silently and leave you with a blank canvas rather than an error. */
+const LAYERS: LayerName[] = ["day", "sunrise", "night"];
+
+/**
+ * Ceiling on backing-store resolution per layer, for the reason TidePass has
+ * one: a mid-range Android simply fails a large canvas allocation, and it does
+ * not throw — it leaves you with blank canvases.
+ */
+const MAX_CANVAS_W = CREW.W;
 const MAX_DPR = 2;
-const MAX_CANVAS_W = CREW.W * 2;
 
 type Props = {
   crew: MintedCrew;
   photos: (PhotoSource | null)[];
+  /** forwarded so useTilt can publish its CSS vars onto the same element */
+  tiltRef: React.Ref<HTMLDivElement>;
+  dragHandlers?: React.DOMAttributes<HTMLDivElement>;
   onDrawError?: (message: string) => void;
 };
 
 /**
- * The crew pass, on screen.
+ * The crew pass, on screen — and it tilts.
  *
- * One canvas rather than TidePass's three: the lenticular tilt is the solo
- * card's payoff and stays there. A crew pass is a different artifact — landscape,
- * already 16:9, and drawn from the day plate only — so there is nothing to
- * interlace and no second face to hide a secret on.
+ * Three printings interlaced through the same striped mask the solo card uses,
+ * reusing `TidePass.module.css` rather than copying the optics. The card's shape
+ * is the only thing that differs, so that is the only thing overridden; keeping
+ * one stylesheet means the two cards cannot drift apart.
  *
- * Reusing TidePass here would have meant reshaping its layer stack and the CSS
- * mask geometry around a card of a different aspect, which is exactly the change
- * `npm run check:mobile` exists to catch. Leaving the solo path untouched is
- * worth more than sharing the component.
+ * If the crew plates aren't in the checkout, `drawCrewCard` falls back to the
+ * composed background and ignores the layer, so all three canvases render the
+ * same image. The tilt then does nothing visible, which is the correct
+ * degradation — nothing breaks, there is just no reveal to see.
  */
-export function CrewPass({ crew, photos, onDrawError }: Props) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+export function CrewPass({
+  crew,
+  photos,
+  tiltRef,
+  dragHandlers,
+  onDrawError,
+}: Props) {
+  const canvases = useRef<Record<string, HTMLCanvasElement | null>>({});
+  const cardRef = useRef<HTMLDivElement | null>(null);
   const assets = useRef<CardAssets | null>(null);
   const plates = useRef<CrewPlates | null>(null);
 
   const draw = useCallback(
     (fonts: Fonts) => {
-      const canvas = canvasRef.current;
-      if (!canvas || !assets.current) return;
+      if (!assets.current) return;
+      const card = cardRef.current;
+      if (!card) return;
 
       const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
-      const cssW = canvas.clientWidth || 320;
+      const cssW = card.clientWidth || 480;
       const w = Math.max(1, Math.min(Math.round(cssW * dpr), MAX_CANVAS_W));
       const h = Math.round(w * (CREW.H / CREW.W));
 
-      /* assigning width/height clears the canvas, so only touch it on a real
-         size change — otherwise every redraw thrashes */
-      if (canvas.width !== w || canvas.height !== h) {
-        canvas.width = w;
-        canvas.height = h;
-      }
+      for (const layer of LAYERS) {
+        const canvas = canvases.current[layer];
+        if (!canvas) continue;
 
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        onDrawError?.("canvas 2d context unavailable on this browser");
-        return;
-      }
+        /* assigning width/height also clears the canvas, so only touch it when
+           the size actually changed — otherwise every redraw thrashes */
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w;
+          canvas.height = h;
+        }
 
-      ctx.clearRect(0, 0, w, h);
-      drawCrewCard(ctx, w, h, {
-        crew,
-        photos,
-        fonts,
-        assets: assets.current,
-        plates: plates.current,
-      });
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          onDrawError?.("canvas 2d context unavailable on this browser");
+          return;
+        }
+
+        ctx.clearRect(0, 0, w, h);
+        drawCrewCard(ctx, w, h, {
+          crew,
+          photos,
+          fonts,
+          assets: assets.current,
+          plates: plates.current,
+          layer,
+        });
+      }
     },
     [crew, photos, onDrawError],
   );
@@ -81,8 +105,6 @@ export function CrewPass({ crew, photos, onDrawError }: Props) {
       .then(([loaded, crewPlates]) => {
         if (cancelled) return;
         assets.current = loaded;
-        /* null when the crew art isn't in the checkout — drawCrewCard falls
-           back to the composed background rather than failing */
         plates.current = crewPlates;
         draw(resolveFonts());
         return ensureFontsLoaded(resolveFonts());
@@ -100,9 +122,10 @@ export function CrewPass({ crew, photos, onDrawError }: Props) {
     };
   }, [draw, onDrawError]);
 
+  /* the backing store is sized from layout, so it has to follow layout */
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || typeof ResizeObserver === "undefined") return;
+    const card = cardRef.current;
+    if (!card || typeof ResizeObserver === "undefined") return;
 
     const ro = new ResizeObserver(() => {
       try {
@@ -111,16 +134,42 @@ export function CrewPass({ crew, photos, onDrawError }: Props) {
         console.error("crew redraw failed", err);
       }
     });
-    ro.observe(canvas);
+    ro.observe(card);
     return () => ro.disconnect();
   }, [draw]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      style={{ aspectRatio: `${CREW.W} / ${CREW.H}` }}
-      className="w-full rounded-xl border border-paper/15 shadow-2xl"
-      aria-label={`${crew.team} crew pass`}
-    />
+    <div className={styles.stage}>
+      <div
+        ref={tiltRef}
+        className={styles.tilt}
+        /* the only thing the crew card changes about the optics is its shape */
+        style={
+          {
+            "--card-aspect": `${CREW.W} / ${CREW.H}`,
+            "--card-width": "560px",
+          } as React.CSSProperties
+        }
+        {...dragHandlers}
+      >
+        <div ref={cardRef} className={styles.card}>
+          {LAYERS.map((layer) => (
+            <canvas
+              key={layer}
+              ref={(el) => {
+                canvases.current[layer] = el;
+              }}
+              className={styles[layer]}
+              aria-hidden={layer !== "day"}
+              aria-label={layer === "day" ? `${crew.team} crew pass` : undefined}
+            />
+          ))}
+
+          {/* foil sweep and grain sit above the interlace, like laminate */}
+          <div className={styles.foil} aria-hidden />
+          <div className={styles.grain} aria-hidden />
+        </div>
+      </div>
+    </div>
   );
 }

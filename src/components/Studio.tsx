@@ -478,13 +478,33 @@ export function Studio() {
               <CrewPass
                 crew={crew}
                 photos={crewPhotos}
+                tiltRef={tilt.ref as React.Ref<HTMLDivElement>}
+                dragHandlers={tilt.dragHandlers}
                 onDrawError={(message) =>
                   setStatus({ kind: "error", message: `crew render: ${message}` })
                 }
               />
-              <p className="max-w-[380px] text-center font-mono text-[10px] leading-relaxed tracking-widest text-paper/45">
-                ONE FRAME, {crew.members.length} BUILDERS. THE TILT REVEAL LIVES ON
-                THE SOLO PASS.
+
+              <TiltHint
+                source={tilt.source}
+                permissionNeeded={tilt.permissionNeeded}
+                motionStatus={tilt.motionStatus}
+                sensorBlocked={tilt.sensorBlocked}
+                isTouch={tilt.isTouch}
+                reducedMotion={tilt.reducedMotion}
+                onEnable={tilt.enableOrientation}
+                onPlay={tilt.playSweep}
+                manual={manualTilt}
+                onManual={(v) => {
+                  setManualTilt(v);
+                  tilt.enterManual();
+                  tilt.setManual(v);
+                }}
+              />
+
+              <p className="max-w-[420px] text-center font-mono text-[10px] leading-relaxed tracking-widest text-paper/45">
+                ONE FRAME, {crew.members.length} BUILDERS. TILT IT — THE CREW HAS A
+                SECRET TOO.
               </p>
             </>
           ) : (

@@ -31,7 +31,7 @@
   /* strip pitch of the simulated lens array */
   --pitch: 3px;
 
-  width: min(100%, 380px);
+  width: min(100%, var(--card-width, 380px));
   transform-style: preserve-3d;
   transform: rotateY(calc(var(--tx) * 15deg)) rotateX(calc(var(--ty) * -11deg));
   will-change: transform;
@@ -45,7 +45,10 @@
 
 .card {
   position: relative;
-  aspect-ratio: 620 / 980;
+  /* The crew pass reuses every one of these optics at a landscape ratio, so the
+     shape is the one thing it overrides. Keeping the interlace in a single
+     stylesheet means the two cards cannot drift apart. */
+  aspect-ratio: var(--card-aspect, 620 / 980);
   border-radius: 22px;
   overflow: hidden;
   transform-style: preserve-3d;

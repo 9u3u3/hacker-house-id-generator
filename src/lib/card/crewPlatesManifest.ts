@@ -10,4 +10,4 @@
  * in production, and indistinguishable from a genuine broken asset in the
  * checks that treat console errors as failures.
  */
-export const CREW_PLATES_AVAILABLE = false;
+export const CREW_PLATES_AVAILABLE = true;

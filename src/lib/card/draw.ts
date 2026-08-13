@@ -824,5 +824,21 @@ export function drawCrewCard(
   ctx.font = `700 22px ${fonts.mono}`;
   tracked(ctx, "#FrameInGoa", CREW.W - CREW.margin, CREW.footerBaseline, 2, "right");
 
+  /* The crew's shared secret, only under blacklight — the same payoff the solo
+     card gives for tilting, and the reason the crew pass earns three printings
+     rather than one. Never exported: the share image is the day layer. */
+  if (layer === "night" && plates) {
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `700 20px ${fonts.mono}`;
+    ctx.fillStyle = "#ffd9f2";
+    ctx.shadowColor = "#ff0080";
+    ctx.shadowBlur = 22;
+    tracked(ctx, crew.secret, CREW.W / 2, CREW.secretY, 3, "center");
+    ctx.shadowBlur = 9;
+    tracked(ctx, crew.secret, CREW.W / 2, CREW.secretY, 3, "center");
+    ctx.shadowBlur = 0;
+  }
+
   ctx.restore();
 }

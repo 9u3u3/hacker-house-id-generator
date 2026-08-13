@@ -1,102 +1,91 @@
-# Crew plate spec
+# Crew plates
 
-What to generate for the CREW pass, so it gets three real illustrated printings
-like the solo card instead of a blurred reuse of the day plate.
+The crew pass has three illustrated printings — day, sunrise, blacklight — the
+way the solo card does, so it tilts and hides a secret like the solo card does.
 
-**Generate 6 images. 3 ship, 3 are reference.**
+They are **generated, not hand-drawn**, from the event's own artwork:
 
----
+```bash
+curl -o public/plates/crew/incoming/raw/sunrise.png \
+  "https://hhgoa.com/assets/Sun%20rise.png"
 
-## The three that ship — blank plates
+bun run scripts/crewart.ts      # compose the three moods -> incoming/*.png
+bun run scripts/crewplates.ts   # encode -> public/plates/crew/*.webp
+bun run scripts/crew.ts photo.jpg
+```
+
+`crewart.ts` crops `Sun rise.png` to the card's 16:9 and grades it three ways.
+That is the same relationship the solo plates have to each other — one scene
+under three lights — and it keeps the crew pass on the actual brand
+illustrations rather than an approximation of them.
+
+## What the grading has to solve
+
+**The three have to be obviously different.** The first attempt used a
+`soft-light` pass, which is close to a no-op against flat saturated colour —
+sunrise came out indistinguishable from day, which defeats the point of a
+lenticular card. It now split-tones: `multiply` pulls the greens toward the
+mood's shadow colour, `screen` lifts the sun and the line work. Sunrise also
+gets a screened wash over the upper sky, because multiplying orange into green
+gives olive, which is a real dusk colour but not a dawn one.
+
+**The bottom third is white villas, and cream type lands on it.** The member
+names and footer sit exactly there. A gradient takes that band down hard; it
+reads as dusk rather than as a fix. `crewplates.ts` reports mean luma and warns
+past 165 — a background too bright to hold cream is the one contrast failure the
+renderer cannot correct.
+
+## What the plates deliberately do not contain
+
+**No text, no photo windows, no card border.** Every word, the three photo
+tiles, the keyline and the badge are drawn in code.
+
+Two reasons. `scripts/plates.ts` spends most of its length compensating for
+three independently produced solo designs putting *one* photo window in three
+slightly different places; printing three windows would triple that problem.
+And a printed window fixes the team size — a two-person crew would show one
+empty frame. Drawing the tiles in code means one set of plates serves both
+sizes, the tiles are pixel-identical across all three printings, and the photo
+cannot drift against its own frame mid-tilt.
+
+That is also why `crewplates.ts` only checks geometry and encodes: there is
+nothing between the three that can fail to line up, so there is nothing to
+register.
+
+## Replacing them with custom art
+
+If someone draws proper crew plates later, drop them in and skip `crewart.ts`:
 
 | | |
 |---|---|
-| **Size** | **2400 × 1350** (16:9). Larger is fine at the same ratio; smaller is not. |
-| **Format** | PNG (converted to WebP on the way in) |
-| **Filenames** | `crew-day.png`, `crew-sunrise.png`, `crew-night.png` |
-| **Put them in** | `public/plates/crew/incoming/` |
+| **Size** | **2400 × 1350** (16:9) |
+| **Files** | `crew-day.png`, `crew-sunrise.png`, `crew-night.png` |
+| **Location** | `public/plates/crew/incoming/` |
 
-**Full-bleed illustrated background. Nothing else.**
+Full-bleed background only — no text, no windows, no border, per above. Keep
+these bands calm, since code draws over them. Coordinates are on a 1200 × 675
+grid; double them for the file.
 
-- **No text.** Not the team name, not "HACKER HOUSE GOA", not a hashtag. Every
-  word on the card is drawn by code, in the real fonts, so it stays sharp and
-  correct at any size.
-- **No photo windows.** No printed frames, no empty boxes, no placeholder
-  people. The code draws 2 or 3 photo tiles with the cream fill and pink keyline
-  the solo card uses. This is what lets one set of plates serve both team sizes.
-- **No card border or keyline.** Art goes edge to edge. The border is drawn by
-  code, so the three plates can never disagree about where the card's edge is —
-  which is the exact problem `scripts/plates.ts` exists to fix on the solo card.
-
-### The three moods
-
-They must be the same scene under three lights — the way the solo plates are one
-card in three printings, not three different cards.
-
-| Plate | Light | Palette |
+| Band | Region | What lands there |
 |---|---|---|
-| `crew-day` | Midday | Bottle green `#0b6839`, cream `#fffbe8`, yellow `#fee101`, pink `#ff0080` |
-| `crew-sunrise` | Dawn | Warm oranges and pinks over the same scene, sun low |
-| `crew-night` | Blacklight / after dark | Purples, cyans, holographic — lit windows, moon |
-
-Style: the same flat Goan line-art as the existing plates and the hhgoa.com
-illustrations — palms, Portuguese villa, tiled roofs, beach, sea.
-
-### Keep these areas calm
-
-The code draws over the plate, so busy detail in these bands fights the type.
-Quiet gradient or open sky/sand is ideal; detail belongs at the edges.
-
-Coordinates are given for a **1200 × 675** design grid — multiply by 2 for a
-2400 × 1350 file.
-
-| Band | Region (1200×675) | What lands there |
-|---|---|---|
-| Header left | x 46–950, y 40–190 | Kicker line + big team name |
+| Header left | x 46–950, y 40–190 | Kicker + team name |
 | Header right | x 1014–1154, y 60–156 | The गोवा badge |
-| **Centre** | **x 260–940, y 208–500** | **The 2–3 photo tiles — keep this clearest** |
-| Names | x 260–940, y 500–580 | Member names + builder classes |
-| Footer | x 46–1154, y 590–650 | Rule, pass number, `#FrameInGoa` |
+| **Centre** | **x 274–926, y 208–496** | **The photo tiles — keep clearest** |
+| Names | x 274–926, y 500–580 | Names + builder classes |
+| Secret | centred, y ≈ 620 | Blacklight line, night plate only |
+| Footer | x 46–1154, y 600–652 | Rule, pass number, `#FrameInGoa` |
 
-Contrast matters more than detail: the type is cream and yellow, so those bands
-want to stay **mid-to-dark**. A bright sky behind cream text is the one failure
-mode that can't be fixed in code.
+Then `bun run scripts/crewplates.ts`, which encodes them and flips
+`CREW_PLATES_AVAILABLE`.
 
----
+## The availability flag
 
-## The three that don't ship — layout reference
+`src/lib/card/crewPlatesManifest.ts` is written by `crewplates.ts` and committed
+with the images. The loader reads it instead of discovering the art by
+requesting it: a miss on a static asset logs a 404 on every visit, which is
+noise in production and makes a genuinely broken asset indistinguishable from
+the expected empty state in the checks that treat console errors as failures.
 
-Same three scenes, but **with** placeholder text and 3 placeholder photo boxes,
-so the intended layout is legible.
-
-- **Filenames** `crew-day-ref.png`, `crew-sunrise-ref.png`, `crew-night-ref.png`
-- **Put them in** `docs/crew-reference/`
-
-These are never loaded by the app. They exist so the layout constants in
-`src/lib/card/layout.ts` can be matched against what the designer intended,
-rather than guessed.
-
----
-
-## Once they're in place
-
-```bash
-bun run scripts/crewplates.ts     # converts incoming/ -> public/plates/crew/*.webp
-bun run scripts/crew.ts photo.jpg # asserts the crew export still decodes clean
-```
-
-The renderer checks for the crew plates at startup and uses them when all three
-load. If any are missing it falls back to the current canvas-composed
-background, so an incomplete drop can't break crew mode.
-
-## Why no printed windows
-
-The solo card prints one photo window, and `scripts/plates.ts` spends most of
-its length compensating for the fact that three independently produced designs
-put that window in three slightly different places.
-
-Printing three windows on a crew plate would triple that problem, and it would
-also fix the team size at exactly three — a two-person crew would show one
-empty printed frame. Drawing the tiles in code means one set of plates covers
-both sizes, the tiles are pixel-identical across all three printings, and the
-photo can never drift against its own frame mid-tilt.
+With the flag false, `drawCrewCard` falls back to a composed background and
+ignores the layer, so all three canvases render the same image — the tilt does
+nothing visible and nothing breaks.

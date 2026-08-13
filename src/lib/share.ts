@@ -227,6 +227,39 @@ export function videoFile(blob: Blob, serial: string, ext: string): File {
 }
 
 /**
+ * Put the rendered card on the clipboard, as an image.
+ *
+ * The desktop half of "attach the image rather than trust a crawler".
+ * `navigator.share` with files is a phone API — no desktop browser offers it —
+ * so on a laptop the only routes to a post that actually contains the card are
+ * a link whose OG image resolves, or a paste. The first depends on the deploy
+ * having a blob store; this one depends on nothing at all, and X accepts a
+ * pasted PNG straight into the composer.
+ *
+ * Must be called while the click's user activation is still live, so it takes a
+ * blob that already exists rather than rendering one — same constraint that
+ * shapes `shareImage` and `openBlankTab`.
+ *
+ * Returns false rather than throwing when the browser has no async clipboard or
+ * refuses the write: this is an enhancement to the share, never the thing that
+ * breaks it.
+ */
+export async function copyImageToClipboard(blob: Blob): Promise<boolean> {
+  try {
+    if (typeof ClipboardItem === "undefined") return false;
+    if (typeof navigator === "undefined" || !navigator.clipboard?.write) return false;
+
+    await navigator.clipboard.write([
+      new ClipboardItem({ [blob.type || "image/png"]: blob }),
+    ]);
+    return true;
+  } catch {
+    /* Firefox before 127, a denied permission, a non-secure context */
+    return false;
+  }
+}
+
+/**
  * Whether this device can share the actual image rather than a link.
  *
  * On a phone this is strictly better: the PNG is attached to the post instead

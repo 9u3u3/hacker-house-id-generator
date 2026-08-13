@@ -23,6 +23,7 @@ import {
   canShareFile,
   captionFor,
   captionForCrew,
+  copyImageToClipboard,
   describePublishError,
   intentUrl,
   metaFor,
@@ -358,9 +359,19 @@ export function Studio() {
     const home = window.location.origin;
     setStatus({ kind: "working", message: "publishing" });
 
+    /* Straight onto the clipboard, before anything is awaited — the write needs
+       the click's user activation just as much as `window.open` does. The card
+       is then one ⌘V from being attached to the post, which is the only route
+       to an image in the tweet that depends on nothing outside the browser. */
+    const ready = preparedBlob();
+    const copying = ready ? copyImageToClipboard(ready) : Promise.resolve(false);
+
     void (async () => {
+      const copied = await copying;
+      const paste = copied ? " — card copied, press ⌘V / Ctrl-V to attach it" : "";
+
       try {
-        const blob = preparedBlob() ?? (await renderCurrent());
+        const blob = ready ?? (await renderCurrent());
         const { path } = await publishRender(
           blob,
           isCrew ? metaForCrew(crew, salt) : metaFor(pass, salt),
@@ -368,16 +379,41 @@ export function Studio() {
         const url = `${home}${path}`;
         setShareUrl(url);
         sendTabTo(tab, intentUrl(caption, url));
-        setStatus({ kind: "idle" });
+        setStatus(
+          copied
+            ? { kind: "working", message: `posted link is your card${paste}` }
+            : { kind: "idle" },
+        );
       } catch (err) {
         console.error(err);
         /* a dead button is the worst outcome — post the caption pointing at the
-           generator rather than nothing at all, and say what actually broke */
+           generator rather than nothing at all, and say what actually broke.
+           With the image on the clipboard the post still ends up carrying the
+           card, which is what the brief actually asks for. */
         sendTabTo(tab, intentUrl(caption, home));
-        setStatus({ kind: "error", message: describePublishError(err) });
+        setStatus({
+          kind: "error",
+          message: `${describePublishError(err)}${paste}`,
+        });
       }
     })();
   }, [isCrew, crew, pass, salt, caption, renderCurrent, preparedBlob]);
+
+  /** The same paste route, on its own button — discoverable without sharing. */
+  const copyImage = useCallback(() => {
+    const blob = preparedBlob();
+    if (!blob) {
+      setStatus({ kind: "working", message: "still rendering — try again in a second" });
+      return;
+    }
+    void copyImageToClipboard(blob).then((ok) =>
+      setStatus(
+        ok
+          ? { kind: "working", message: "card copied — paste it straight into the post" }
+          : { kind: "error", message: "this browser won't copy images — use DOWNLOAD PNG" },
+      ),
+    );
+  }, [preparedBlob]);
 
   /**
    * Attach the real PNG to the post instead of relying on a link preview.
@@ -719,6 +755,19 @@ export function Studio() {
                 className="rounded-full border border-pink/60 px-7 py-3.5 font-mono text-sm font-bold tracking-widest text-pink transition hover:bg-pink hover:text-paper"
               >
                 SHARE IMAGE
+              </button>
+            )}
+
+            {/* The desktop counterpart to SHARE IMAGE. `navigator.share` with a
+                file is phone-only, so on a laptop this is the one way to get the
+                actual card into the post rather than a link to it. */}
+            {ready && !canShareImage && (
+              <button
+                type="button"
+                onClick={copyImage}
+                className="rounded-full border border-pink/60 px-7 py-3.5 font-mono text-sm font-bold tracking-widest text-pink transition hover:bg-pink hover:text-paper"
+              >
+                COPY CARD IMAGE
               </button>
             )}
           </div>

@@ -274,7 +274,7 @@ npm run check:framing               # auto-crop vs 8 awkward photos, no browser 
 bun run scripts/preview.ts          # render layers + share scene to .preview/
 bun run scripts/shoot.ts            # screenshot the studio at five tilt angles
 bun run scripts/flow.ts photo.jpg   # upload → download, checks the PNG decodes
-bun run scripts/share.ts photo.jpg  # publish → verify OG tags resolve
+bun run scripts/share.ts photo.jpg  # publish → verify OG tags resolve (add --crew for the crew card)
 bun run scripts/crew.ts photo.jpg   # CREW roster → download, same pixel assertions
 bun run scripts/intent.ts photo.jpg # SHARE TO X opens on the click, and degrades
 bun run scripts/reveal.ts photo.jpg # records the animated reveal, checks it moves

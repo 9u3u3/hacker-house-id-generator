@@ -52,7 +52,14 @@ import { Diagnostics } from "./Diagnostics";
 import { Marquee } from "./Marquee";
 import { TidePass } from "./TidePass";
 
-type Status = { kind: "idle" | "working" | "error"; message?: string };
+/**
+ * `working` disables the buttons, so it must mean *a job is in flight* and
+ * nothing else. A finished action that still has something to say — "the card
+ * is on your clipboard" — is a `note`: it prints, and it leaves the controls
+ * alone. Reusing `working` for those messages left DOWNLOAD PNG and SHARE TO X
+ * disabled with no way back, since nothing was running to clear them.
+ */
+type Status = { kind: "idle" | "working" | "note" | "error"; message?: string };
 
 /** `origin` never changes for the life of the document, so there's nothing to
     subscribe to — this exists only to satisfy the store contract. */
@@ -381,7 +388,7 @@ export function Studio() {
         sendTabTo(tab, intentUrl(caption, url));
         setStatus(
           copied
-            ? { kind: "working", message: `posted link is your card${paste}` }
+            ? { kind: "note", message: `posted link is your card${paste}` }
             : { kind: "idle" },
         );
       } catch (err) {
@@ -403,13 +410,13 @@ export function Studio() {
   const copyImage = useCallback(() => {
     const blob = preparedBlob();
     if (!blob) {
-      setStatus({ kind: "working", message: "still rendering — try again in a second" });
+      setStatus({ kind: "note", message: "still rendering — try again in a second" });
       return;
     }
     void copyImageToClipboard(blob).then((ok) =>
       setStatus(
         ok
-          ? { kind: "working", message: "card copied — paste it straight into the post" }
+          ? { kind: "note", message: "card copied — paste it straight into the post" }
           : { kind: "error", message: "this browser won't copy images — use DOWNLOAD PNG" },
       ),
     );
@@ -424,7 +431,7 @@ export function Studio() {
   const shareImage = useCallback(() => {
     const blob = preparedBlob();
     if (!blob) {
-      setStatus({ kind: "working", message: "still rendering — try again in a second" });
+      setStatus({ kind: "note", message: "still rendering — try again in a second" });
       return;
     }
     shareFileNatively({
@@ -814,6 +821,14 @@ export function Studio() {
 
           {status.kind === "error" && (
             <p role="alert" className="font-mono text-sm text-pink">
+              {status.message}
+            </p>
+          )}
+
+          {/* polite, not assertive: this reports something that already worked,
+              so it shouldn't interrupt a screen reader mid-sentence */}
+          {status.kind === "note" && (
+            <p role="status" className="font-mono text-sm text-yellow">
               {status.message}
             </p>
           )}

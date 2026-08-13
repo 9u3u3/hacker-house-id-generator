@@ -225,6 +225,7 @@ bun run scripts/shoot.ts            # screenshot the studio at five tilt angles
 bun run scripts/flow.ts photo.jpg   # upload → download, checks the PNG decodes
 bun run scripts/share.ts photo.jpg  # publish → verify OG tags resolve
 bun run scripts/crew.ts photo.jpg   # CREW roster → download, same pixel assertions
+bun run scripts/intent.ts photo.jpg # SHARE TO X opens on the click, and degrades
 ```
 
 Asset pipeline — only needed if the designs change:
@@ -247,4 +248,10 @@ exist because of bugs that screenshots couldn't catch:
   page looks like a green card.
 - Two separate bugs put **transparency** into the export (`destination-out` cuts
   through the card background, not just the shape it's masking), and transparent
-  regions render as white bars on X. `flow.ts` asserts zero transparent pixels.
+  regions render as white bars on X. `flow.ts` and `crew.ts` assert zero
+  transparent pixels.
+- `intent.ts` exists for the same reason in a different medium: **SHARE TO X
+  looked completely fine and did nothing**, because `window.open` fired after
+  the click's user activation had already been spent. Nothing you can see in a
+  screenshot, so it asserts the tab starts at `about:blank` and is redirected
+  afterwards.

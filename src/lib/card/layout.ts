@@ -49,6 +49,27 @@ export const NAME = {
 export const BADGE = { x: 421, y: 255, w: 167, h: 115 };
 
 /**
+ * The rarity tier, in the card's header strip.
+ *
+ * That strip carries "RESIDENT" and a globe on the left and the LET'S BUILD
+ * TOGETHER stamp on the right — the one band of the plate wide enough for a
+ * chip that isn't already printed on. Everywhere else was taken: the class
+ * chip's own band is illustration, and the space under it is where the night
+ * plate prints the blacklight secret.
+ *
+ * Centred between the lanyard slot (which ends around x 500) and the stamp
+ * (which starts around x 773) rather than on the card, because the slot is
+ * punched left of centre and a centred chip runs straight into it.
+ */
+export const TIER_CHIP = {
+  centerX: 640,
+  centerY: 88,
+  height: 46,
+  padX: 26,
+  size: 25,
+};
+
+/**
  * The generated builder title, on a printed chip in the band between the photo
  * window and the data panel.
  *
@@ -93,6 +114,45 @@ export const ROW = {
 
 /** Only drawn on the night plate — the payoff for tilting. */
 export const SECRET = { y: 1212, size: 27 };
+
+/**
+ * The crew pass — one combined card for 2–3 people.
+ *
+ * Landscape, and at the share scene's exact dimensions, for two reasons. The
+ * illustrated plates print a single portrait photo window 333x499, and there is
+ * no way to divide that into two or three slots without either banding faces
+ * into letterbox strips or squeezing them into 111px columns — the geometry
+ * simply doesn't subdivide. And a crew card that is already 16:9 needs no second
+ * composition to be postable: X crops portrait images in-timeline, so the solo
+ * card has to be composited into a landscape field before it can be shared,
+ * while this one *is* the field.
+ *
+ * The plate art still carries it — drawn as a dimmed cover behind the type, the
+ * same treatment `scene.ts` gives the solo share image, so the two read as one
+ * system rather than two designs.
+ *
+ * Tiles are cut at `PHOTO_ASPECT`, so a crew photo goes through exactly the same
+ * subject-aware crop a solo photo does.
+ */
+export const CREW = {
+  W: 1200,
+  H: 675,
+  margin: 46,
+  /** "HACKER HOUSE GOA · CREW PASS" */
+  kickerBaseline: 84,
+  team: { capHeight: 84, baseline: 176, maxWidth: 938 },
+  badge: { x: 1014, y: 60, w: 140, h: 96 },
+  tile: { top: 208, height: 288, gap: 36, radius: 16 },
+  memberNameBaseline: 528,
+  /** the builder class wraps to at most two lines under the name */
+  memberClassBaseline: 554,
+  memberClassLeading: 20,
+  ruleY: 600,
+  footerBaseline: 634,
+};
+
+/** Tile width follows the card's own photo aspect, so the crop is unchanged. */
+export const CREW_TILE_W = Math.round(CREW.tile.height * PHOTO_ASPECT);
 
 export const INK = {
   green: "#0d3b2e",

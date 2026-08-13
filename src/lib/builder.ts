@@ -15,6 +15,39 @@ export type Pass = {
   salt: number;
 };
 
+/**
+ * How rare this draw is.
+ *
+ * The builder class was already the thing people compare — this puts a number
+ * on it. REROLL is right there and costs nothing, so a tier printed on the card
+ * turns "what did you get?" into a loop: reroll for a good one, post the good
+ * one. The Radar ranks on views of that post.
+ *
+ * Weighted so MYTHIC is genuinely uncommon; a tier everyone has is not a tier.
+ */
+export type Tier = "COMMON" | "RARE" | "MYTHIC";
+
+export const TIERS: Record<Tier, { label: string; share: number }> = {
+  COMMON: { label: "COMMON", share: 0.78 },
+  RARE: { label: "RARE", share: 0.18 },
+  MYTHIC: { label: "MYTHIC", share: 0.04 },
+};
+
+/**
+ * Bucket by hash range.
+ *
+ * Its own labelled draw rather than a reuse of the class hash: sharing one would
+ * tie a tier to a specific builder class forever, so ANJUNA SHIPPER would be
+ * MYTHIC for everybody who ever rolled it and the rest would be unreachable.
+ * A separate field means any class can come up at any tier.
+ */
+export function tierOf(n: number): Tier {
+  const roll = (n >>> 8) % 10000;
+  if (roll < TIERS.MYTHIC.share * 10000) return "MYTHIC";
+  if (roll < (TIERS.MYTHIC.share + TIERS.RARE.share) * 10000) return "RARE";
+  return "COMMON";
+}
+
 export type MintedPass = {
   name: string;
   /** what they do — "FULL STACK", "DESIGN ENGINEER" */
@@ -24,6 +57,8 @@ export type MintedPass = {
   handle: string;
   /** e.g. "ANJUNA NIGHT-COMPILER" */
   builderClass: string;
+  /** how rare that draw was — printed on the card, foiled above COMMON */
+  tier: Tier;
   /** e.g. "HHG-2026-0417" */
   serial: string;
   /** the four digits of the serial, which is what the card prints */
@@ -173,6 +208,7 @@ export function mint(input: Pass): MintedPass {
   const f = (label: string) => fieldOf(seed, label);
 
   const builderClass = `${pick(PLACES, f("place"))} ${pick(ARCHETYPES, f("archetype"))}`;
+  const tier = tierOf(f("tier"));
   const passNo = String((f("serial") >>> 8) % 10000).padStart(4, "0");
   const serial = `HHG-2026-${passNo}`;
   const seat = String(((f("seat") >>> 8) % 247) + 1).padStart(3, "0");
@@ -197,10 +233,72 @@ export function mint(input: Pass): MintedPass {
     stack,
     handle,
     builderClass,
+    tier,
     serial,
     passNo,
     seat,
     secret,
     mrz,
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* crew                                                                */
+/* ------------------------------------------------------------------ */
+
+export type MintedCrew = {
+  /** the shared header — one team, one card */
+  team: string;
+  /** each member keeps their own builder class, minted exactly as a solo pass */
+  members: MintedPass[];
+  serial: string;
+  passNo: string;
+  secret: string;
+  mrz: [string, string];
+};
+
+export const CREW_MIN = 2;
+export const CREW_MAX = 3;
+
+/**
+ * A combined pass for a team.
+ *
+ * Built *on* `mint` rather than beside it: every member is a real minted pass,
+ * so a builder class means the same thing on a crew card as on a solo one and
+ * there is only ever one place that derives it. What's added is the layer above
+ * — a team name, and a serial seeded from the roster rather than from any one
+ * person, so the crew card has an identity of its own that still changes when
+ * the line-up does.
+ *
+ * The roster is folded in order, which is deliberate: reordering the team is a
+ * different crew and should mint a different number. `salt` rerolls the whole
+ * card, members included, so REROLL behaves the same in both modes.
+ */
+export function mintCrew(input: {
+  team: string;
+  members: Pass[];
+  salt: number;
+}): MintedCrew {
+  const team = normalize(input.team) || "UNNAMED CREW";
+  const members = input.members.map((m) => mint({ ...m, salt: input.salt }));
+
+  const roster = members.map((m) => m.name.toLowerCase()).join("+");
+  const seed = hash(`crew|${team.toLowerCase()}|${roster}|${input.salt}`);
+  const f = (label: string) => fieldOf(seed, label);
+
+  const passNo = String((f("serial") >>> 8) % 10000).padStart(4, "0");
+  const serial = `HHG-CREW-${passNo}`;
+  const secret = pick(SECRETS, f("secret"));
+
+  const tag = members
+    .map((m) => m.handle || m.name.split(" ")[0])
+    .join("<")
+    .toUpperCase();
+
+  const mrz: [string, string] = [
+    mrzLine(`IDINDCREW<<${team.toUpperCase().replace(/\s+/g, "<")}`),
+    mrzLine(`${serial.replace(/-/g, "")}IND2026<HHGOA<${members.length}PAX<${tag}`),
+  ];
+
+  return { team, members, serial, passNo, secret, mrz };
 }

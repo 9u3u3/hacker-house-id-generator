@@ -46,7 +46,8 @@ await page.locator('[class*="tilt"]').first().screenshot({
 const t1 = Date.now();
 const [download] = await Promise.all([
   page.waitForEvent("download", { timeout: 20000 }),
-  page.getByRole("button", { name: /DOWNLOAD/i }).click(),
+  /* specific: the video export is also a DOWNLOAD-ish button now */
+  page.getByRole("button", { name: /DOWNLOAD PNG/i }).click(),
 ]);
 const path = `${OUT}/downloaded.png`;
 await download.saveAs(path);

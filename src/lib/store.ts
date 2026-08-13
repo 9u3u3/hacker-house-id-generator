@@ -15,16 +15,33 @@ function hasVercelBlob(): boolean {
   return !!process.env.BLOB_READ_WRITE_TOKEN;
 }
 
+export type CrewMemberRecord = {
+  name: string;
+  builderClass: string;
+  tier?: string;
+};
+
 export type PassRecord = {
   name: string;
   role: string;
   stack: string;
   handle: string;
   builderClass: string;
+  /** COMMON | RARE | MYTHIC — a string, since records outlive the enum */
+  tier?: string;
   serial: string;
   seat: string;
   salt: number;
   createdAt: string;
+  /**
+   * Set only on crew passes.
+   *
+   * Optional rather than a second record type: the stored artifact is a PNG
+   * plus the text `/id/[slug]` prints beside it, and that is the same shape
+   * either way. Records written before crew mode existed stay readable.
+   */
+  team?: string;
+  members?: CrewMemberRecord[];
 };
 
 export async function putImage(key: string, body: Buffer): Promise<string> {

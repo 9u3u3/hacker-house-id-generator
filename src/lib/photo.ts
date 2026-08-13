@@ -85,9 +85,63 @@ async function decodeBlob(blob: Blob): Promise<Decoded> {
   return await decodeViaImgElement(blob);
 }
 
+/**
+ * Ceiling on the decoded long edge.
+ *
+ * A 48MP HEIC straight off a recent iPhone decodes to ~8000x6000 — 190MB of
+ * RGBA — and the card's photo window is a few hundred plate pixels wide. On a
+ * mid-range Android that allocation is what kills the tab, and it takes the
+ * saliency pass and every `drawImage` down with it. 2000px is still four times
+ * more detail than the window can print at 2x.
+ */
+const MAX_EDGE = 2000;
+
+/**
+ * Downscale a decoded image to fit `MAX_EDGE`, releasing the original.
+ *
+ * The peak allocation still happens — the browser has to decode before we know
+ * how big it is, and there's no portable way to ask first. What this removes is
+ * the *retained* cost: the full-res bitmap is closed here rather than held for
+ * the session behind `LoadedPhoto`, so nothing downstream ever touches it.
+ *
+ * Halving in steps rather than one jump: a single 4:1+ `drawImage` reduction
+ * aliases visibly on hair and fabric, and successive halves cost almost nothing
+ * at these sizes.
+ */
+function downscale(decoded: Decoded): Decoded {
+  if (Math.max(decoded.width, decoded.height) <= MAX_EDGE) return decoded;
+
+  const original = decoded.source;
+  let current = decoded;
+
+  while (Math.max(current.width, current.height) > MAX_EDGE) {
+    const longest = Math.max(current.width, current.height);
+    const step = Math.max(MAX_EDGE / longest, 0.5);
+    const w = Math.max(1, Math.round(current.width * step));
+    const h = Math.max(1, Math.round(current.height * step));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return decoded; /* nothing to lose by keeping the original */
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(current.source, 0, 0, w, h);
+
+    current = { source: canvas, width: w, height: h };
+  }
+
+  if (typeof ImageBitmap !== "undefined" && original instanceof ImageBitmap) {
+    original.close();
+  }
+  return current;
+}
+
 export async function decodeImage(file: File): Promise<Decoded> {
   try {
-    return await decodeBlob(file);
+    return downscale(await decodeBlob(file));
   } catch (err) {
     /* HEIC is the usual reason a native decode fails off an iPhone. The wasm
        decoder is ~1.5MB, so it only loads once we actually need it. */
@@ -99,7 +153,7 @@ export async function decodeImage(file: File): Promise<Decoded> {
       type: "image/jpeg",
       quality: 0.92,
     });
-    return await decodeBlob(converted);
+    return downscale(await decodeBlob(converted));
   }
 }
 

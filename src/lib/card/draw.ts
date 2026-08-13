@@ -1,16 +1,20 @@
-import type { MintedPass } from "@/lib/builder";
+import type { MintedCrew, MintedPass, Tier } from "@/lib/builder";
 import type { CardAssets } from "./assets";
 import {
   BADGE,
   CLASS_CHIP,
+  CREW,
+  CREW_TILE_W,
   INK,
   NAME,
   PLATE_H,
   PLATE_W,
   ROW,
   SECRET,
+  TIER_CHIP,
   WINDOWS,
 } from "./layout";
+import { drawFoil, foilStyle } from "./foil";
 import type { LayerName } from "./theme";
 
 export type Fonts = { display: string; mono: string };
@@ -379,6 +383,44 @@ function drawDataRow(
   ctx.restore();
 }
 
+/**
+ * The rarity tier, printed like a stamped clearance level.
+ *
+ * COMMON gets the same muted treatment the rest of the header strip has; RARE
+ * and MYTHIC take their colour from `foil.ts`, so the chip and the sheen can
+ * never disagree about what tier a card is.
+ */
+function drawTierChip(
+  ctx: CanvasRenderingContext2D,
+  pass: MintedPass,
+  fonts: Fonts,
+) {
+  const style = foilStyle(pass.tier);
+
+  ctx.save();
+  ctx.textBaseline = "alphabetic";
+  ctx.font = `700 ${TIER_CHIP.size}px ${fonts.mono}`;
+
+  const label = pass.tier;
+  const w = trackedWidth(ctx, label, 4) + TIER_CHIP.padX * 2;
+  const h = TIER_CHIP.height;
+  const x = TIER_CHIP.centerX - w / 2;
+  const y = TIER_CHIP.centerY - h / 2;
+
+  roundRectPath(ctx, x, y, w, h, h / 2);
+  ctx.fillStyle = style?.chipFill ?? "rgba(13,59,46,0.10)";
+  ctx.fill();
+  ctx.strokeStyle = style ? style.chipFill : "rgba(13,59,46,0.35)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  const cap = ctx.measureText(label).actualBoundingBoxAscent || TIER_CHIP.size * 0.72;
+  ctx.fillStyle = style?.chipInk ?? "rgba(13,59,46,0.65)";
+  tracked(ctx, label, TIER_CHIP.centerX, TIER_CHIP.centerY + cap / 2, 4, "center");
+
+  ctx.restore();
+}
+
 /** The line that only exists under blacklight. Never leaves the site. */
 function drawSecret(
   ctx: CanvasRenderingContext2D,
@@ -428,9 +470,316 @@ export function drawCard(
   /* the badge straddles the name, so it paints after it */
   ctx.drawImage(assets.badge, BADGE.x, BADGE.y, BADGE.w, BADGE.h);
 
+  drawTierChip(ctx, pass, fonts);
   drawClassChip(ctx, pass, fonts);
   drawDataRow(ctx, pass, fonts);
   if (layer === "night") drawSecret(ctx, pass, fonts);
+
+  /* the finish goes on last, over everything, exactly like a laminate */
+  drawFoil(ctx, PLATE_W, PLATE_H, pass.tier);
+
+  ctx.restore();
+}
+
+/* ------------------------------------------------------------------ */
+/* crew                                                                */
+/* ------------------------------------------------------------------ */
+
+/** Greedy wrap to at most `maxLines`, ellipsising whatever won't fit. */
+function wrapTracked(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  spacing: number,
+  maxWidth: number,
+  maxLines: number,
+): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let line = "";
+
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word;
+    if (line && trackedWidth(ctx, next, spacing) > maxWidth) {
+      lines.push(line);
+      line = word;
+      if (lines.length === maxLines) break;
+    } else {
+      line = next;
+    }
+  }
+  if (lines.length < maxLines && line) lines.push(line);
+
+  /* the last line still has to fit — shed characters rather than overrun */
+  const last = lines.length - 1;
+  if (last >= 0) {
+    while (lines[last].length > 1 && trackedWidth(ctx, lines[last], spacing) > maxWidth) {
+      lines[last] = lines[last].slice(0, -1);
+    }
+  }
+  return lines;
+}
+
+/** Set a mono line at the largest size that fits, then centre it. */
+function fitMono(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  family: string,
+  weight: number,
+  size: number,
+  spacing: number,
+  maxWidth: number,
+  minSize: number,
+): number {
+  let s = size;
+  ctx.font = `${weight} ${s}px ${family}`;
+  while (trackedWidth(ctx, text, spacing) > maxWidth && s > minSize) {
+    s -= 1;
+    ctx.font = `${weight} ${s}px ${family}`;
+  }
+  return s;
+}
+
+/**
+ * One member's photo, in the printed tile.
+ *
+ * Same treatment as the solo window — cream ground, pink keyline, photo inset so
+ * the keyline survives — because a crew tile is the same object as a solo photo
+ * window, just smaller and repeated. Without a photo the tile prints initials,
+ * which keeps the row from collapsing into a hole while someone is still
+ * uploading.
+ */
+function drawCrewTile(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  photo: PhotoSource | null,
+  initials: string,
+  tier: Tier,
+  fonts: Fonts,
+) {
+  ctx.save();
+
+  roundRectPath(ctx, x, y, w, h, CREW.tile.radius);
+  ctx.fillStyle = "rgba(242,230,207,0.94)";
+  ctx.fill();
+
+  ctx.save();
+  roundRectPath(ctx, x + 6, y + 6, w - 12, h - 12, CREW.tile.radius - 4);
+  ctx.clip();
+
+  if (photo) {
+    const iw = w - 12;
+    const ih = h - 12;
+    const scale = Math.max(iw / photo.sw, ih / photo.sh);
+    const dw = photo.sw * scale;
+    const dh = photo.sh * scale;
+    ctx.drawImage(
+      photo.image,
+      photo.sx,
+      photo.sy,
+      photo.sw,
+      photo.sh,
+      x + 6 + (iw - dw) / 2,
+      y + 6 + (ih - dh) / 2,
+      dw,
+      dh,
+    );
+  } else {
+    ctx.fillStyle = "rgba(13,59,46,0.12)";
+    ctx.fillRect(x + 6, y + 6, w - 12, h - 12);
+    ctx.fillStyle = "rgba(13,59,46,0.55)";
+    ctx.font = `900 ${Math.round(h * 0.26)}px ${fonts.display}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(initials, x + w / 2, y + h / 2);
+  }
+  ctx.restore();
+
+  /* the tier rides in the corner of the tile, the way a trading card prints it
+     — there is no room for a chip between the tile and the name below it */
+  const style = foilStyle(tier);
+  if (style) {
+    ctx.font = `700 13px ${fonts.mono}`;
+    const label = tier;
+    const cw = trackedWidth(ctx, label, 2.5) + 20;
+    roundRectPath(ctx, x + 10, y + h - 34, cw, 24, 12);
+    ctx.fillStyle = style.chipFill;
+    ctx.fill();
+    ctx.fillStyle = style.chipInk;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    tracked(ctx, label, x + 10 + cw / 2, y + h - 21, 2.5, "center");
+  }
+
+  roundRectPath(ctx, x, y, w, h, CREW.tile.radius);
+  ctx.strokeStyle = style?.edge ?? INK.pink;
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+/**
+ * The combined team pass.
+ *
+ * hhgoa.com's task text asks for the generator to "bring your teammates into one
+ * combined frame", which the single-person card cannot do. This is that card:
+ * one header, one serial, one image, with each member keeping the builder class
+ * their own inputs mint.
+ *
+ * It draws from the same canvas pipeline and the same plate art as the solo
+ * card, so there is still exactly one renderer and the export cannot drift from
+ * what's on screen.
+ */
+export function drawCrewCard(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  opts: {
+    crew: MintedCrew;
+    photos: (PhotoSource | null)[];
+    fonts: Fonts;
+    assets: CardAssets;
+  },
+) {
+  const { crew, photos, fonts, assets } = opts;
+
+  ctx.save();
+  ctx.scale(width / CREW.W, height / CREW.H);
+
+  /* ---- ground ---- */
+  /* opaque first and never cut back into: transparency in an export renders as
+     white bars on X, which is what scripts/flow.ts asserts against */
+  ctx.fillStyle = "#08281d";
+  ctx.fillRect(0, 0, CREW.W, CREW.H);
+
+  ctx.save();
+  ctx.globalAlpha = 0.26;
+  /* Blurred, unlike the solo share scene's version of this backdrop. There the
+     card covers the left half and hides the plate's own printed words; here
+     nothing does, and at 2.6x they come through as legible text rather than
+     texture. Safari before 17 ignores ctx.filter, which just leaves the
+     unblurred art — the same thing scene.ts already ships. */
+  ctx.filter = "blur(9px)";
+  const coverH = CREW.H * 2.6;
+  const coverW = coverH * (PLATE_W / PLATE_H);
+  ctx.drawImage(
+    assets.plates.day,
+    (CREW.W - coverW) / 2,
+    CREW.H * 0.5 - coverH * 0.42,
+    coverW,
+    coverH,
+  );
+  ctx.restore();
+
+  ctx.fillStyle = "rgba(8,40,29,0.58)";
+  ctx.fillRect(0, 0, CREW.W, CREW.H);
+
+  ctx.strokeStyle = "rgba(242,230,207,0.22)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(14, 14, CREW.W - 28, CREW.H - 28, 12);
+  ctx.stroke();
+
+  /* ---- header ---- */
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+
+  ctx.fillStyle = "rgba(242,230,207,0.75)";
+  ctx.font = `700 13px ${fonts.mono}`;
+  tracked(
+    ctx,
+    `HACKER HOUSE GOA · 28–31 OCT 2026 · CREW OF ${crew.members.length}`,
+    CREW.margin,
+    CREW.kickerBaseline,
+    3.4,
+    "left",
+  );
+
+  const team = crew.team.toUpperCase();
+  const fit = fitLine(ctx, team, fonts.display, CREW.team.capHeight, CREW.team.maxWidth);
+  ctx.fillStyle = "#f2e6cf";
+  drawFitted(ctx, team, CREW.margin, CREW.team.baseline, fit);
+
+  ctx.drawImage(assets.badge, CREW.badge.x, CREW.badge.y, CREW.badge.w, CREW.badge.h);
+
+  /* ---- the roster ---- */
+  const n = crew.members.length;
+  const total = n * CREW_TILE_W + (n - 1) * CREW.tile.gap;
+  let x = (CREW.W - total) / 2;
+
+  for (const [i, member] of crew.members.entries()) {
+    drawCrewTile(
+      ctx,
+      x,
+      CREW.tile.top,
+      CREW_TILE_W,
+      CREW.tile.height,
+      photos[i] ?? null,
+      initialsOf(member.name),
+      member.tier,
+      fonts,
+    );
+
+    const cx = x + CREW_TILE_W / 2;
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = "#f2e6cf";
+    fitMono(ctx, member.name.toUpperCase(), fonts.mono, 700, 24, 1.5, CREW_TILE_W, 13);
+    tracked(ctx, member.name.toUpperCase(), cx, CREW.memberNameBaseline, 1.5, "center");
+
+    /* the class runs long — two lines beats shrinking it into illegibility */
+    ctx.fillStyle = "#fee101";
+    ctx.font = `500 15px ${fonts.mono}`;
+    const lines = wrapTracked(ctx, member.builderClass, 1.4, CREW_TILE_W, 2);
+    for (const [li, line] of lines.entries()) {
+      tracked(
+        ctx,
+        line,
+        cx,
+        CREW.memberClassBaseline + li * CREW.memberClassLeading,
+        1.4,
+        "center",
+      );
+    }
+
+    x += CREW_TILE_W + CREW.tile.gap;
+  }
+
+  /* ---- footer ---- */
+  ctx.strokeStyle = "rgba(242,230,207,0.22)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(CREW.margin, CREW.ruleY);
+  ctx.lineTo(CREW.W - CREW.margin, CREW.ruleY);
+  ctx.stroke();
+
+  ctx.textAlign = "left";
+  ctx.fillStyle = "rgba(242,230,207,0.6)";
+  ctx.font = `400 15px ${fonts.mono}`;
+  tracked(
+    ctx,
+    `PASS ${crew.serial} · ${n} BUILDERS · ONE FRAME`,
+    CREW.margin,
+    CREW.footerBaseline,
+    2,
+    "left",
+  );
+
+  ctx.textAlign = "right";
+  ctx.fillStyle = "#fee101";
+  ctx.font = `700 22px ${fonts.mono}`;
+  tracked(ctx, "#FrameInGoa", CREW.W - CREW.margin, CREW.footerBaseline, 2, "right");
 
   ctx.restore();
 }

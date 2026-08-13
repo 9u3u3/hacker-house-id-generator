@@ -45,3 +45,6 @@ next-env.d.ts
 certificates
 # raw design uploads — large; the normalised plates are what ship
 public/plates/incoming/
+
+# raw crew design uploads — the encoded plates are what ship
+public/plates/crew/incoming/

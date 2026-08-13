@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { MintedCrew } from "@/lib/builder";
 import { loadCardAssets, type CardAssets } from "@/lib/card/assets";
+import { loadCrewPlates, type CrewPlates } from "@/lib/card/crewAssets";
 import { drawCrewCard, type Fonts, type PhotoSource } from "@/lib/card/draw";
 import { ensureFontsLoaded, resolveFonts } from "@/lib/card/fonts";
 import { CREW } from "@/lib/card/layout";
@@ -34,6 +35,7 @@ type Props = {
 export function CrewPass({ crew, photos, onDrawError }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const assets = useRef<CardAssets | null>(null);
+  const plates = useRef<CrewPlates | null>(null);
 
   const draw = useCallback(
     (fonts: Fonts) => {
@@ -59,7 +61,13 @@ export function CrewPass({ crew, photos, onDrawError }: Props) {
       }
 
       ctx.clearRect(0, 0, w, h);
-      drawCrewCard(ctx, w, h, { crew, photos, fonts, assets: assets.current });
+      drawCrewCard(ctx, w, h, {
+        crew,
+        photos,
+        fonts,
+        assets: assets.current,
+        plates: plates.current,
+      });
     },
     [crew, photos, onDrawError],
   );
@@ -69,10 +77,13 @@ export function CrewPass({ crew, photos, onDrawError }: Props) {
        in — awaiting them first leaves the card blank if document.fonts hangs */
     let cancelled = false;
 
-    loadCardAssets()
-      .then((loaded) => {
+    Promise.all([loadCardAssets(), loadCrewPlates()])
+      .then(([loaded, crewPlates]) => {
         if (cancelled) return;
         assets.current = loaded;
+        /* null when the crew art isn't in the checkout — drawCrewCard falls
+           back to the composed background rather than failing */
+        plates.current = crewPlates;
         draw(resolveFonts());
         return ensureFontsLoaded(resolveFonts());
       })

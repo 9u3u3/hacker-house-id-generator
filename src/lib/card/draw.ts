@@ -1,5 +1,6 @@
 import type { MintedCrew, MintedPass, Tier } from "@/lib/builder";
 import type { CardAssets } from "./assets";
+import type { CrewPlates } from "./crewAssets";
 import {
   BADGE,
   CLASS_CHIP,
@@ -621,6 +622,34 @@ function drawCrewTile(
   ctx.restore();
 }
 
+/**
+ * Fill a box with an image, cropping the overflow rather than stretching it.
+ *
+ * The plates are authored at 16:9 to match the card, but nothing enforces that
+ * — an export at a slightly different ratio should lose a sliver off an edge,
+ * not squash the scene.
+ */
+function drawCover(
+  ctx: CanvasRenderingContext2D,
+  image: CanvasImageSource,
+  w: number,
+  h: number,
+) {
+  const iw =
+    (image as HTMLImageElement).naturalWidth ||
+    (image as HTMLCanvasElement).width ||
+    w;
+  const ih =
+    (image as HTMLImageElement).naturalHeight ||
+    (image as HTMLCanvasElement).height ||
+    h;
+
+  const scale = Math.max(w / iw, h / ih);
+  const dw = iw * scale;
+  const dh = ih * scale;
+  ctx.drawImage(image, (w - dw) / 2, (h - dh) / 2, dw, dh);
+}
+
 function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return "?";
@@ -649,9 +678,14 @@ export function drawCrewCard(
     photos: (PhotoSource | null)[];
     fonts: Fonts;
     assets: CardAssets;
+    /** the crew's own illustrated plates, when the art has been dropped in */
+    plates?: CrewPlates | null;
+    /** which printing to use; only meaningful with `plates` */
+    layer?: LayerName;
   },
 ) {
-  const { crew, photos, fonts, assets } = opts;
+  const { crew, photos, fonts, assets, plates } = opts;
+  const layer = opts.layer ?? "day";
 
   ctx.save();
   ctx.scale(width / CREW.W, height / CREW.H);
@@ -662,27 +696,36 @@ export function drawCrewCard(
   ctx.fillStyle = "#08281d";
   ctx.fillRect(0, 0, CREW.W, CREW.H);
 
-  ctx.save();
-  ctx.globalAlpha = 0.26;
-  /* Blurred, unlike the solo share scene's version of this backdrop. There the
-     card covers the left half and hides the plate's own printed words; here
-     nothing does, and at 2.6x they come through as legible text rather than
-     texture. Safari before 17 ignores ctx.filter, which just leaves the
-     unblurred art — the same thing scene.ts already ships. */
-  ctx.filter = "blur(9px)";
-  const coverH = CREW.H * 2.6;
-  const coverW = coverH * (PLATE_W / PLATE_H);
-  ctx.drawImage(
-    assets.plates.day,
-    (CREW.W - coverW) / 2,
-    CREW.H * 0.5 - coverH * 0.42,
-    coverW,
-    coverH,
-  );
-  ctx.restore();
+  if (plates) {
+    /* the real thing: a 16:9 scene painted for this card, so it needs no
+       blurring, no upscaling and only a light scrim to hold the type */
+    drawCover(ctx, plates[layer], CREW.W, CREW.H);
+    ctx.fillStyle = "rgba(8,40,29,0.28)";
+    ctx.fillRect(0, 0, CREW.W, CREW.H);
+  } else {
+    ctx.save();
+    ctx.globalAlpha = 0.26;
+    /* Fallback while the crew art doesn't exist: the solo day plate, blown up
+       and blurred. Blurred because the solo share scene gets away with this
+       treatment only by covering its left half with the card — here nothing
+       does, and at 2.6x the plate's own printed words come through as legible
+       text rather than texture. Safari before 17 ignores ctx.filter, which
+       just leaves the unblurred art, the same thing scene.ts already ships. */
+    ctx.filter = "blur(9px)";
+    const coverH = CREW.H * 2.6;
+    const coverW = coverH * (PLATE_W / PLATE_H);
+    ctx.drawImage(
+      assets.plates.day,
+      (CREW.W - coverW) / 2,
+      CREW.H * 0.5 - coverH * 0.42,
+      coverW,
+      coverH,
+    );
+    ctx.restore();
 
-  ctx.fillStyle = "rgba(8,40,29,0.58)";
-  ctx.fillRect(0, 0, CREW.W, CREW.H);
+    ctx.fillStyle = "rgba(8,40,29,0.58)";
+    ctx.fillRect(0, 0, CREW.W, CREW.H);
+  }
 
   ctx.strokeStyle = "rgba(242,230,207,0.22)";
   ctx.lineWidth = 2;

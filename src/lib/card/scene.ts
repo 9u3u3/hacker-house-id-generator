@@ -1,6 +1,7 @@
 import type { MintedPass } from "@/lib/builder";
 import type { CardAssets } from "./assets";
 import type { MintedCrew } from "@/lib/builder";
+import type { CrewPlates } from "./crewAssets";
 import {
   drawCard,
   drawCrewCard,
@@ -282,6 +283,7 @@ export async function renderCrewBlob(opts: {
   photos: (PhotoSource | null)[];
   fonts: Fonts;
   assets: CardAssets;
+  plates?: CrewPlates | null;
   scale?: number;
 }): Promise<Blob> {
   const scale = opts.scale ?? EXPORT_SCALE;

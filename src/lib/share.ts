@@ -1,6 +1,7 @@
 import type { MintedCrew, MintedPass } from "./builder";
 import { resolveFonts, ensureFontsLoaded } from "./card/fonts";
 import { loadCardAssets } from "./card/assets";
+import { loadCrewPlates } from "./card/crewAssets";
 import { renderCrewBlob, renderShareBlob } from "./card/scene";
 import type { PhotoSource } from "./card/draw";
 
@@ -111,12 +112,17 @@ export async function renderCrew(params: {
   photos: (PhotoSource | null)[];
 }): Promise<Blob> {
   const fonts = resolveFonts();
-  const [assets] = await Promise.all([loadCardAssets(), ensureFontsLoaded(fonts)]);
+  const [assets, plates] = await Promise.all([
+    loadCardAssets(),
+    loadCrewPlates(),
+    ensureFontsLoaded(fonts),
+  ]);
   return await renderCrewBlob({
     crew: params.crew,
     photos: params.photos,
     fonts,
     assets,
+    plates,
   });
 }
 

@@ -1,7 +1,7 @@
-import type { MintedPass } from "./builder";
+import type { MintedCrew, MintedPass } from "./builder";
 import { resolveFonts, ensureFontsLoaded } from "./card/fonts";
 import { loadCardAssets } from "./card/assets";
-import { renderShareBlob } from "./card/scene";
+import { renderCrewBlob, renderShareBlob } from "./card/scene";
 import type { PhotoSource } from "./card/draw";
 
 export const SHARE_TAG = "#FrameInGoa";
@@ -40,9 +40,21 @@ export function describePublishError(err: unknown): string {
 /* ------------------------------------------------------------------ */
 
 export function captionFor(pass: MintedPass): string {
+  /* a rare pull is the reason someone posts rather than just downloading, so
+     it leads the caption when there is one */
+  const pull = pass.tier === "COMMON" ? "" : `${pass.tier} pull — `;
   return (
-    `I'm a ${pass.builderClass} at Hacker House Goa 2026 — pass ${pass.serial}. ` +
+    `${pull}I'm a ${pass.builderClass} at Hacker House Goa 2026 — pass ${pass.serial}. ` +
     `Tilt the card, it doesn't show you the same thing twice.\n\n${SHARE_TAG}`
+  );
+}
+
+export function captionForCrew(crew: MintedCrew): string {
+  const names = crew.members.map((m) => m.name).join(", ");
+  return (
+    `${crew.team} took one frame together at Hacker House Goa 2026 — ` +
+    `${names}. Crew pass ${crew.serial}. Make your team's with the generator.` +
+    `\n\n${SHARE_TAG}`
   );
 }
 
@@ -93,6 +105,42 @@ export async function publishRender(
   return (await res.json()) as { slug: string; path: string };
 }
 
+/** The combined team pass. Already 16:9, so there is no compositing step. */
+export async function renderCrew(params: {
+  crew: MintedCrew;
+  photos: (PhotoSource | null)[];
+}): Promise<Blob> {
+  const fonts = resolveFonts();
+  const [assets] = await Promise.all([loadCardAssets(), ensureFontsLoaded(fonts)]);
+  return await renderCrewBlob({
+    crew: params.crew,
+    photos: params.photos,
+    fonts,
+    assets,
+  });
+}
+
+export function metaForCrew(crew: MintedCrew, salt: number): Record<string, unknown> {
+  return {
+    team: crew.team,
+    members: crew.members.map((m) => ({
+      name: m.name,
+      builderClass: m.builderClass,
+      tier: m.tier,
+    })),
+    /* the flat fields stay populated so an older reader of the record — and the
+       page's own fallbacks — still have something to print */
+    name: crew.team,
+    builderClass: `${crew.members.length} BUILDERS · ONE FRAME`,
+    serial: crew.serial,
+    role: "",
+    stack: "",
+    handle: "",
+    seat: "",
+    salt,
+  };
+}
+
 export function metaFor(pass: MintedPass, salt: number): Record<string, unknown> {
   return {
     name: pass.name,
@@ -100,6 +148,7 @@ export function metaFor(pass: MintedPass, salt: number): Record<string, unknown>
     stack: pass.stack,
     handle: pass.handle,
     builderClass: pass.builderClass,
+    tier: pass.tier,
     serial: pass.serial,
     seat: pass.seat,
     salt,

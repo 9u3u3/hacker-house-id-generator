@@ -1,7 +1,15 @@
 import type { MintedPass } from "@/lib/builder";
 import type { CardAssets } from "./assets";
-import { drawCard, tracked, trackedWidth, type Fonts, type PhotoSource } from "./draw";
-import { INK } from "./layout";
+import type { MintedCrew } from "@/lib/builder";
+import {
+  drawCard,
+  drawCrewCard,
+  tracked,
+  trackedWidth,
+  type Fonts,
+  type PhotoSource,
+} from "./draw";
+import { CREW, INK } from "./layout";
 import { CARD_H, CARD_W } from "./theme";
 
 /**
@@ -169,6 +177,15 @@ export function drawShareScene(
   ctx.restore();
 }
 
+function toPng(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("toBlob failed"))),
+      "image/png",
+    );
+  });
+}
+
 /** Convenience wrapper: full-res scene straight to a PNG blob. */
 export async function renderShareBlob(opts: {
   pass: MintedPass;
@@ -187,10 +204,33 @@ export async function renderShareBlob(opts: {
 
   drawShareScene(ctx, canvas.width, canvas.height, opts);
 
-  return await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error("toBlob failed"))),
-      "image/png",
-    );
-  });
+  return await toPng(canvas);
+}
+
+/**
+ * The crew pass, exported.
+ *
+ * No compositing step, unlike the solo card: the crew layout is already 16:9,
+ * so what gets posted is the card itself. It lands at the same pixel dimensions
+ * as the solo export, which is what lets `/id/[slug]` declare one set of
+ * `og:image` width/height for both.
+ */
+export async function renderCrewBlob(opts: {
+  crew: MintedCrew;
+  photos: (PhotoSource | null)[];
+  fonts: Fonts;
+  assets: CardAssets;
+  scale?: number;
+}): Promise<Blob> {
+  const scale = opts.scale ?? EXPORT_SCALE;
+  const canvas = document.createElement("canvas");
+  canvas.width = CREW.W * scale;
+  canvas.height = CREW.H * scale;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("canvas 2d context unavailable");
+
+  drawCrewCard(ctx, canvas.width, canvas.height, opts);
+
+  return await toPng(canvas);
 }

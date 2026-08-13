@@ -9,7 +9,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { MotionStatus } from "@/hooks/useTilt";
-import { mint } from "@/lib/builder";
+import { CREW_MAX, CREW_MIN, mint, mintCrew, type Tier } from "@/lib/builder";
 import { resolveFonts, ensureFontsLoaded } from "@/lib/card/fonts";
 import { loadCardAssets } from "@/lib/card/assets";
 import { PHOTO_ASPECT } from "@/lib/card/layout";
@@ -17,12 +17,15 @@ import { computeCrop, loadPhoto, type LoadedPhoto } from "@/lib/photo";
 import {
   canShareFile,
   captionFor,
+  captionForCrew,
   describePublishError,
   intentUrl,
   metaFor,
+  metaForCrew,
   openBlankTab,
   pngFile,
   publishRender,
+  renderCrew,
   renderPass,
   sendTabTo,
   shareFileNatively,
@@ -30,6 +33,7 @@ import {
 import type { PhotoSource } from "@/lib/card/draw";
 import { useTilt } from "@/hooks/useTilt";
 import { Backdrop } from "./Backdrop";
+import { CrewPass } from "./CrewPass";
 import { Diagnostics } from "./Diagnostics";
 import { Marquee } from "./Marquee";
 import { TidePass } from "./TidePass";
@@ -44,6 +48,38 @@ type Adjust = { zoom: number; offsetX: number; offsetY: number };
 
 /** What `computeCrop` does on its own: subject-aware, no user input. */
 const AUTO_CROP: Adjust = { zoom: 1, offsetX: 0, offsetY: 0 };
+
+/**
+ * SOLO is the card this app has always made; CREW is the combined team pass.
+ *
+ * A toggle rather than a rewrite, deliberately: hhgoa.com's brief asks for both
+ * ("design your own frame generator" *and* "use that same generator to bring
+ * your teammates into one combined frame"), and the solo flow is the one that's
+ * been tested on real phones. Crew mode is additive — nothing in the solo path
+ * branches on it.
+ */
+type Mode = "solo" | "crew";
+
+type Member = {
+  /** stable across re-renders so React keys survive a photo swap */
+  id: number;
+  name: string;
+  photo: LoadedPhoto | null;
+  adjust: Adjust;
+};
+
+let nextMemberId = 1;
+const blankMember = (): Member => ({
+  id: nextMemberId++,
+  name: "",
+  photo: null,
+  adjust: AUTO_CROP,
+});
+
+/** Element-wise identity check — every dependency here is memoised. */
+function sameDeps(a: readonly unknown[], b: readonly unknown[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
 
 export function Studio() {
   const [name, setName] = useState("");
@@ -60,6 +96,13 @@ export function Studio() {
   const [canShareImage, setCanShareImage] = useState(false);
   const [copied, setCopied] = useState<"link" | "caption" | null>(null);
   const [adjust, setAdjust] = useState<Adjust>(AUTO_CROP);
+
+  const [mode, setMode] = useState<Mode>("solo");
+  const [team, setTeam] = useState("");
+  const [members, setMembers] = useState<Member[]>(() => [
+    blankMember(),
+    blankMember(),
+  ]);
 
   /* window.location isn't there during the server render, and reading it into
      state from an effect would cascade a second render on every mount */
@@ -80,6 +123,37 @@ export function Studio() {
     () => (photo ? computeCrop(photo, PHOTO_ASPECT, adjust) : null),
     [photo, adjust],
   );
+
+  /* Crew tiles are cut at the same aspect as the card's own photo window, so a
+     crew photo runs through the identical subject-aware crop — which matters
+     more here, since three photos of different shapes sit side by side and one
+     face landing off-centre is immediately obvious. */
+  const crewPhotos = useMemo(
+    () =>
+      members.map((m) =>
+        m.photo ? computeCrop(m.photo, PHOTO_ASPECT, m.adjust) : null,
+      ),
+    [members],
+  );
+
+  const crew = useMemo(
+    () =>
+      mintCrew({
+        team,
+        members: members.map((m) => ({
+          name: m.name,
+          role: "",
+          stack: "",
+          handle: "",
+          salt,
+        })),
+        salt,
+      }),
+    [team, members, salt],
+  );
+
+  const crewReady =
+    team.trim().length > 0 && members.every((m) => m.name.trim().length > 0);
 
   /* Warm the fonts as soon as the studio mounts. Canvas won't wait for them,
      and a cold first draw renders the card in a fallback serif. */
@@ -106,8 +180,68 @@ export function Studio() {
     }
   }, []);
 
-  const ready = name.trim().length > 0;
-  const caption = useMemo(() => captionFor(pass), [pass]);
+  /* ---------------- whichever pass is on screen ---------------- */
+
+  const isCrew = mode === "crew";
+  const patchMember = useCallback((id: number, patch: Partial<Member>) => {
+    setMembers((list) =>
+      list.map((m) => (m.id === id ? { ...m, ...patch } : m)),
+    );
+  }, []);
+
+  const handleMemberFile = useCallback(
+    async (id: number, file: File | undefined | null) => {
+      if (!file) return;
+      setStatus({ kind: "working", message: "reading photo" });
+      try {
+        const loaded = await loadPhoto(file);
+        patchMember(id, { photo: loaded, adjust: AUTO_CROP });
+        setStatus({ kind: "idle" });
+      } catch (err) {
+        console.error(err);
+        setStatus({
+          kind: "error",
+          message: "couldn't read that image — try a jpg or png",
+        });
+      }
+    },
+    [patchMember],
+  );
+
+  /* Switching to CREW carries the solo card over as the first member rather
+     than starting empty — the photo is already decoded and re-uploading it to
+     say the same thing is the kind of friction the brief calls out. */
+  const enterCrew = useCallback(() => {
+    setMembers((list) =>
+      list[0].name || list[0].photo
+        ? list
+        : [{ ...list[0], name, photo, adjust }, ...list.slice(1)],
+    );
+    setMode("crew");
+  }, [name, photo, adjust]);
+
+  const ready = isCrew ? crewReady : name.trim().length > 0;
+  const serial = isCrew ? crew.serial : pass.serial;
+
+  const caption = useMemo(
+    () => (isCrew ? captionForCrew(crew) : captionFor(pass)),
+    [isCrew, crew, pass],
+  );
+
+  /* the identity of everything the render depends on, so the cache below can
+     tell "same card" from "the user typed a letter" without a deep compare */
+  const renderDeps = useMemo<readonly unknown[]>(
+    () => (isCrew ? ["crew", crew, crewPhotos] : ["solo", pass, photoSource]),
+    [isCrew, crew, crewPhotos, pass, photoSource],
+  );
+
+  const renderCurrent = useCallback(
+    () =>
+      isCrew
+        ? renderCrew({ crew, photos: crewPhotos })
+        : renderPass({ pass, photo: photoSource }),
+    [isCrew, crew, crewPhotos, pass, photoSource],
+  );
 
   /*
    * The last full-res render, kept keyed on exactly what produced it.
@@ -118,20 +252,14 @@ export function Studio() {
    * makes DOWNLOAD and SHARE instant instead of re-rendering 2400x1350 each
    * time. Nothing is uploaded here; this is the same local render as always.
    */
-  const prepared = useRef<{
-    pass: typeof pass;
-    photo: PhotoSource | null;
-    blob: Blob;
-  } | null>(null);
+  const prepared = useRef<{ deps: readonly unknown[]; blob: Blob } | null>(null);
 
   const preparedBlob = useCallback(
     () =>
-      prepared.current &&
-      prepared.current.pass === pass &&
-      prepared.current.photo === photoSource
+      prepared.current && sameDeps(prepared.current.deps, renderDeps)
         ? prepared.current.blob
         : null,
-    [pass, photoSource],
+    [renderDeps],
   );
 
   useEffect(() => {
@@ -139,11 +267,11 @@ export function Studio() {
     let cancelled = false;
     /* debounced: the pass re-mints on every keystroke */
     const timer = setTimeout(() => {
-      renderPass({ pass, photo: photoSource })
+      renderCurrent()
         .then((blob) => {
           if (cancelled) return;
-          prepared.current = { pass, photo: photoSource, blob };
-          setCanShareImage(canShareFile(pngFile(blob, pass.serial)));
+          prepared.current = { deps: renderDeps, blob };
+          setCanShareImage(canShareFile(pngFile(blob, serial)));
         })
         .catch((err) => console.error("share pre-render failed", err));
     }, 700);
@@ -152,17 +280,17 @@ export function Studio() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [ready, pass, photoSource]);
+  }, [ready, renderCurrent, renderDeps, serial]);
 
   const download = useCallback(async () => {
     setStatus({ kind: "working", message: "rendering" });
     try {
-      const blob = preparedBlob() ?? (await renderPass({ pass, photo: photoSource }));
+      const blob = preparedBlob() ?? (await renderCurrent());
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `hh-goa-2026-${pass.serial.toLowerCase()}.png`;
+      a.download = `hh-goa-2026-${serial.toLowerCase()}.png`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -173,7 +301,7 @@ export function Studio() {
       console.error(err);
       setStatus({ kind: "error", message: "render failed — try again" });
     }
-  }, [pass, photoSource, preparedBlob]);
+  }, [serial, renderCurrent, preparedBlob]);
 
   /**
    * Share to X.
@@ -191,8 +319,11 @@ export function Studio() {
 
     void (async () => {
       try {
-        const blob = preparedBlob() ?? (await renderPass({ pass, photo: photoSource }));
-        const { path } = await publishRender(blob, metaFor(pass, salt));
+        const blob = preparedBlob() ?? (await renderCurrent());
+        const { path } = await publishRender(
+          blob,
+          isCrew ? metaForCrew(crew, salt) : metaFor(pass, salt),
+        );
         const url = `${home}${path}`;
         setShareUrl(url);
         sendTabTo(tab, intentUrl(caption, url));
@@ -205,7 +336,7 @@ export function Studio() {
         setStatus({ kind: "error", message: describePublishError(err) });
       }
     })();
-  }, [pass, photoSource, salt, caption, preparedBlob]);
+  }, [isCrew, crew, pass, salt, caption, renderCurrent, preparedBlob]);
 
   /**
    * Attach the real PNG to the post instead of relying on a link preview.
@@ -220,7 +351,7 @@ export function Studio() {
       return;
     }
     shareFileNatively({
-      file: pngFile(blob, pass.serial),
+      file: pngFile(blob, serial),
       caption,
       url: window.location.origin,
     })
@@ -229,7 +360,7 @@ export function Studio() {
         console.error(err);
         setStatus({ kind: "error", message: "the share sheet wouldn't open" });
       });
-  }, [pass.serial, caption, preparedBlob]);
+  }, [serial, caption, preparedBlob]);
 
   const copy = useCallback(async (what: "link" | "caption", text: string) => {
     try {
@@ -249,32 +380,50 @@ export function Studio() {
       <main className="mx-auto grid w-full max-w-6xl gap-10 px-5 pb-24 pt-10 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)] lg:gap-16 lg:pt-16">
         {/* ---------------- card ---------------- */}
         <section className="flex flex-col items-center gap-5">
-          <TidePass
-            pass={pass}
-            photo={photoSource}
-            tiltRef={tilt.ref as React.Ref<HTMLDivElement>}
-            dragHandlers={tilt.dragHandlers}
-            onDrawError={(message) =>
-              setStatus({ kind: "error", message: `card render: ${message}` })
-            }
-          />
+          {isCrew ? (
+            <>
+              <CrewPass
+                crew={crew}
+                photos={crewPhotos}
+                onDrawError={(message) =>
+                  setStatus({ kind: "error", message: `crew render: ${message}` })
+                }
+              />
+              <p className="max-w-[380px] text-center font-mono text-[10px] leading-relaxed tracking-widest text-paper/45">
+                ONE FRAME, {crew.members.length} BUILDERS. THE TILT REVEAL LIVES ON
+                THE SOLO PASS.
+              </p>
+            </>
+          ) : (
+            <>
+              <TidePass
+                pass={pass}
+                photo={photoSource}
+                tiltRef={tilt.ref as React.Ref<HTMLDivElement>}
+                dragHandlers={tilt.dragHandlers}
+                onDrawError={(message) =>
+                  setStatus({ kind: "error", message: `card render: ${message}` })
+                }
+              />
 
-          <TiltHint
-            source={tilt.source}
-            permissionNeeded={tilt.permissionNeeded}
-            motionStatus={tilt.motionStatus}
-            sensorBlocked={tilt.sensorBlocked}
-            isTouch={tilt.isTouch}
-            reducedMotion={tilt.reducedMotion}
-            onEnable={tilt.enableOrientation}
-            onPlay={tilt.playSweep}
-            manual={manualTilt}
-            onManual={(v) => {
-              setManualTilt(v);
-              tilt.enterManual();
-              tilt.setManual(v);
-            }}
-          />
+              <TiltHint
+                source={tilt.source}
+                permissionNeeded={tilt.permissionNeeded}
+                motionStatus={tilt.motionStatus}
+                sensorBlocked={tilt.sensorBlocked}
+                isTouch={tilt.isTouch}
+                reducedMotion={tilt.reducedMotion}
+                onEnable={tilt.enableOrientation}
+                onPlay={tilt.playSweep}
+                manual={manualTilt}
+                onManual={(v) => {
+                  setManualTilt(v);
+                  tilt.enterManual();
+                  tilt.setManual(v);
+                }}
+              />
+            </>
+          )}
         </section>
 
         {/* ---------------- controls ---------------- */}
@@ -284,73 +433,105 @@ export function Studio() {
               HACKER HOUSE GOA · 28–31 OCT 2026
             </p>
             <h1 className="font-display mt-2 text-6xl sm:text-7xl">
-              MINT YOUR
-              <br />
-              TIDE PASS
+              {isCrew ? (
+                <>
+                  MINT YOUR
+                  <br />
+                  CREW PASS
+                </>
+              ) : (
+                <>
+                  MINT YOUR
+                  <br />
+                  TIDE PASS
+                </>
+              )}
             </h1>
             <p className="mt-4 max-w-md font-mono text-sm leading-relaxed text-paper/70">
-              Drop a photo, take your seat. Then tilt the card — it doesn&apos;t
-              show you the same thing twice.
+              {isCrew
+                ? "Two or three of you, one combined frame. Same generator, same builder classes — one card you can all post."
+                : "Drop a photo, take your seat. Then tilt the card — it doesn't show you the same thing twice."}
             </p>
           </header>
 
-          <Dropzone
-            hasPhoto={!!photo}
-            dragOver={dragOver}
-            onDragState={setDragOver}
-            onFile={handleFile}
-          />
+          <ModeToggle mode={mode} onSolo={() => setMode("solo")} onCrew={enterCrew} />
 
-          {photo && photoSource && (
-            <PhotoFramer
-              photo={photo}
-              crop={photoSource}
-              adjust={adjust}
-              onAdjust={setAdjust}
+          {isCrew ? (
+            <CrewRoster
+              team={team}
+              onTeam={setTeam}
+              members={members}
+              crops={crewPhotos}
+              classes={crew.members.map((m) => m.builderClass)}
+              tiers={crew.members.map((m) => m.tier)}
+              onName={(id, v) => patchMember(id, { name: v })}
+              onFile={handleMemberFile}
+              onAdjust={(id, next) => patchMember(id, { adjust: next })}
+              onAdd={() => setMembers((l) => [...l, blankMember()])}
+              onRemove={(id) => setMembers((l) => l.filter((m) => m.id !== id))}
             />
+          ) : (
+            <>
+              <Dropzone
+                hasPhoto={!!photo}
+                dragOver={dragOver}
+                onDragState={setDragOver}
+                onFile={handleFile}
+              />
+
+              {photo && photoSource && (
+                <PhotoFramer
+                  photo={photo}
+                  crop={photoSource}
+                  adjust={adjust}
+                  onAdjust={setAdjust}
+                />
+              )}
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field
+                  label="NAME"
+                  value={name}
+                  onChange={setName}
+                  placeholder="your name"
+                  maxLength={28}
+                />
+                <Field
+                  label="X HANDLE"
+                  value={handle}
+                  onChange={setHandle}
+                  placeholder="@you"
+                  maxLength={20}
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field
+                  label="ROLE"
+                  value={role}
+                  onChange={setRole}
+                  placeholder="design engineer"
+                  maxLength={22}
+                />
+                <Field
+                  label="STACK"
+                  value={stack}
+                  onChange={setStack}
+                  placeholder="typescript · rust"
+                  maxLength={28}
+                />
+              </div>
+            </>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field
-              label="NAME"
-              value={name}
-              onChange={setName}
-              placeholder="your name"
-              maxLength={28}
-            />
-            <Field
-              label="X HANDLE"
-              value={handle}
-              onChange={setHandle}
-              placeholder="@you"
-              maxLength={20}
-            />
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field
-              label="ROLE"
-              value={role}
-              onChange={setRole}
-              placeholder="design engineer"
-              maxLength={22}
-            />
-            <Field
-              label="STACK"
-              value={stack}
-              onChange={setStack}
-              placeholder="typescript · rust"
-              maxLength={28}
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-paper/15 bg-green-deep/75 p-4">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-paper/15 bg-green-deep/85 p-4">
             <div className="min-w-0 flex-1">
-              <p className="font-mono text-[10px] tracking-[0.3em] text-paper/50">
-                BUILDER CLASS
+              <p className="flex items-center gap-2 font-mono text-[10px] tracking-[0.3em] text-paper/50">
+                {isCrew ? "CREW PASS" : "BUILDER CLASS"}
+                {!isCrew && <TierPip tier={pass.tier} />}
               </p>
               <p className="truncate font-mono text-lg font-bold text-yellow">
-                {pass.builderClass}
+                {isCrew ? crew.serial : pass.builderClass}
               </p>
             </div>
             <button
@@ -410,7 +591,9 @@ export function Studio() {
 
           {!ready && (
             <p className="font-mono text-xs text-paper/45">
-              Add your name to unlock download.
+              {isCrew
+                ? "Name the crew and every member to unlock download."
+                : "Add your name to unlock download."}
             </p>
           )}
         </section>
@@ -422,6 +605,175 @@ export function Studio() {
 }
 
 /* ------------------------------------------------------------------ */
+
+/**
+ * The rarity tier, beside whatever it applies to.
+ *
+ * COMMON stays deliberately quiet — it's four cards in five, and shouting about
+ * it would make the other two mean less. RARE and MYTHIC take the same colours
+ * the card's own foil does.
+ */
+function TierPip({ tier }: { tier: Tier }) {
+  const style: Record<Tier, string> = {
+    COMMON: "border-paper/25 text-paper/45",
+    RARE: "border-yellow/70 bg-yellow/15 text-yellow",
+    MYTHIC: "border-pink/70 bg-pink/20 text-pink",
+  };
+  return (
+    <span
+      className={`rounded-full border px-2 py-0.5 text-[9px] tracking-[0.2em] ${style[tier]}`}
+    >
+      {tier}
+    </span>
+  );
+}
+
+/**
+ * SOLO / CREW.
+ *
+ * A segmented control rather than a link to a second page: the two modes share
+ * a photo and a name, and switching should feel like changing the print, not
+ * starting over.
+ */
+function ModeToggle(props: {
+  mode: Mode;
+  onSolo: () => void;
+  onCrew: () => void;
+}) {
+  const tab = (active: boolean) =>
+    `flex-1 rounded-full px-5 py-2.5 font-mono text-xs font-bold tracking-widest transition ${
+      active
+        ? "bg-yellow text-green-ink"
+        : "text-paper/60 hover:text-paper"
+    }`;
+
+  return (
+    <div
+      role="tablist"
+      aria-label="Pass type"
+      className="flex gap-1 rounded-full border border-paper/20 bg-green-deep/85 p-1"
+    >
+      <button
+        type="button"
+        role="tab"
+        aria-selected={props.mode === "solo"}
+        onClick={props.onSolo}
+        className={tab(props.mode === "solo")}
+      >
+        SOLO
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={props.mode === "crew"}
+        onClick={props.onCrew}
+        className={tab(props.mode === "crew")}
+      >
+        CREW ↗
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The team roster: 2–3 people, a photo and a name each.
+ *
+ * Name only, per member, rather than the solo card's four fields. The builder
+ * class is seeded from the name either way, so each member still mints a
+ * distinct one — and asking three people for a role, a stack and a handle is
+ * how a combined frame stops being something anyone finishes.
+ *
+ * Each slot gets the same `PhotoFramer` the solo flow does, since a crew tile is
+ * narrower than the solo window and the auto-crop has more chance to be wrong.
+ */
+function CrewRoster(props: {
+  team: string;
+  onTeam: (v: string) => void;
+  members: Member[];
+  crops: (PhotoSource | null)[];
+  classes: string[];
+  tiers: Tier[];
+  onName: (id: number, v: string) => void;
+  onFile: (id: number, f: File | undefined) => void;
+  onAdjust: (id: number, next: Adjust) => void;
+  onAdd: () => void;
+  onRemove: (id: number) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-5">
+      <Field
+        label="CREW NAME"
+        value={props.team}
+        onChange={props.onTeam}
+        placeholder="tide runners"
+        maxLength={24}
+      />
+
+      {props.members.map((member, i) => (
+        <div
+          key={member.id}
+          className="flex flex-col gap-4 rounded-xl border border-paper/15 bg-green-deep/85 p-4"
+        >
+          <div className="flex items-center justify-between">
+            <p className="font-mono text-[10px] tracking-[0.3em] text-paper/50">
+              MEMBER {String(i + 1).padStart(2, "0")}
+            </p>
+            {props.members.length > CREW_MIN && (
+              <button
+                type="button"
+                onClick={() => props.onRemove(member.id)}
+                className="font-mono text-[10px] tracking-widest text-pink underline"
+              >
+                REMOVE
+              </button>
+            )}
+          </div>
+
+          <Field
+            label="NAME"
+            value={member.name}
+            onChange={(v) => props.onName(member.id, v)}
+            placeholder="their name"
+            maxLength={22}
+          />
+
+          <Dropzone
+            hasPhoto={!!member.photo}
+            dragOver={false}
+            onDragState={() => {}}
+            onFile={(f) => props.onFile(member.id, f)}
+          />
+
+          {member.photo && props.crops[i] && (
+            <PhotoFramer
+              photo={member.photo}
+              crop={props.crops[i]}
+              adjust={member.adjust}
+              onAdjust={(next) => props.onAdjust(member.id, next)}
+            />
+          )}
+
+          {member.name.trim() && (
+            <p className="flex items-center gap-2 font-mono text-xs tracking-widest text-yellow">
+              <span className="truncate">{props.classes[i]}</span>
+              <TierPip tier={props.tiers[i]} />
+            </p>
+          )}
+        </div>
+      ))}
+
+      {props.members.length < CREW_MAX && (
+        <button
+          type="button"
+          onClick={props.onAdd}
+          className="rounded-xl border border-dashed border-paper/25 px-5 py-4 font-mono text-xs font-bold tracking-widest text-paper/70 transition hover:border-paper/60 hover:text-paper"
+        >
+          + ADD A THIRD BUILDER
+        </button>
+      )}
+    </div>
+  );
+}
 
 /**
  * Nudge the auto-crop when it guesses wrong.
@@ -492,7 +844,7 @@ function PhotoFramer(props: {
     adjust.offsetY !== AUTO_CROP.offsetY;
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-paper/15 bg-green-deep/75 p-4">
+    <div className="flex flex-col gap-3 rounded-xl border border-paper/15 bg-green-deep/85 p-4">
       <div className="flex items-center justify-between">
         <p className="font-mono text-[10px] tracking-[0.3em] text-paper/50">
           FRAMING {touched ? "· NUDGED" : "· AUTO"}
@@ -587,7 +939,7 @@ function ShareFallback(props: {
     "rounded-full border border-paper/25 px-4 py-2 font-mono text-[11px] tracking-widest text-paper/80 transition hover:border-paper hover:text-paper";
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-paper/15 bg-green-deep/75 p-4">
+    <div className="flex flex-col gap-3 rounded-xl border border-paper/15 bg-green-deep/85 p-4">
       <p className="font-mono text-[10px] tracking-[0.3em] text-paper/50">
         {props.link ? "PUBLISHED — POST IT" : "IF THE POPUP GETS BLOCKED"}
       </p>
@@ -648,7 +1000,7 @@ function Field(props: {
         onChange={(e) => props.onChange(e.target.value)}
         placeholder={props.placeholder}
         maxLength={props.maxLength}
-        className="mt-1.5 w-full rounded-lg border border-paper/20 bg-green-deep/85 px-4 py-3 font-mono text-base text-paper outline-none transition placeholder:text-paper/30 focus:border-yellow"
+        className="mt-1.5 w-full rounded-lg border border-paper/20 bg-green-deep/90 px-4 py-3 font-mono text-base text-paper outline-none transition placeholder:text-paper/30 focus:border-yellow"
       />
     </label>
   );
